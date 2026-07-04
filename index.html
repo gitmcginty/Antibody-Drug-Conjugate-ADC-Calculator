@@ -237,7 +237,7 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
           <label class="field"><span>Antibody mass <span class="unit">(mg)</span></span><input id="cj_mass" type="number" step="0.1" value="10"></label>
           <label class="field"><span>Antibody MW <span class="unit">(g/mol)</span></span><input id="cj_mw" type="number" value="145000"></label>
           <label class="field"><span>[mAb] in reaction <span class="unit">(g/L)</span></span><input id="cj_conc" type="number" step="0.1" value="5"></label>
-          <label class="field"><span>Free thiols / mAb <span class="unit">(blank = auto)</span></span><input id="cj_thiols" type="number" step="1" placeholder="auto"></label>
+          <label class="field" id="cj_thiols_field"><span>Free thiols / mAb <span class="unit">(blank = auto)</span></span><input id="cj_thiols" type="number" step="1" placeholder="auto"></label>
           <label class="field"><span>Final DMSO <span class="unit">(% v/v)</span></span><input id="cj_dmso" type="number" step="1" value="10"></label>
         </div>
         <div id="cj_reagents"></div>
@@ -858,9 +858,12 @@ function calcConj() {
     freeThiolsPerMab: thiolsRaw === "" ? null : parseFloat(thiolsRaw),
     dmsoFraction: num("cj_dmso") / 100,
   });
+  const thiolRoute = ["cys_native", "cys_rebridge", "thiomab"].includes(route);
+  // Free-thiol count is fixed (0) for lysine and MTGase, so the override field does not apply there.
+  $("cj_thiols_field").style.display = thiolRoute ? "" : "none";
   let html = "<h3>Reaction plan</h3>"
     + rrow("Antibody amount", fmt(plan.nMabNmol, 2) + " nmol")
-    + rrow("Free thiols / mAb", fmt(plan.freeThiolsPerMab, 0))
+    + (thiolRoute ? rrow("Free thiols / mAb", fmt(plan.freeThiolsPerMab, 0)) : "")
     + rrow("Reaction volume", fmt(plan.reactionVolumeUL, 1) + " &micro;L")
     + rrow("DMSO (target)", fmt(plan.dmsoVolumeUL, 1) + " &micro;L");
   plan.additions.forEach((a) => {
