@@ -363,6 +363,7 @@ table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:poin
       <button class="act" onclick="calcEC()">Compute &epsilon;</button>
     </div>
     <div class="results" id="ec_results" style="margin-top:var(--s2)"></div>
+    <div id="ec_chart" style="margin-top:var(--s2)"></div>
     <p class="sub">Need &ge;2 points with distinct concentrations. Leave A&lambda;max blank if you only want &epsilon;280.</p>
   </div>
 
@@ -1164,6 +1165,7 @@ function calcEC() {
     if (Number.isFinite(c) && Number.isFinite(parseFloat(r.almax))) { concL.push(c * factor); almaxV.push(parseFloat(r.almax)); }
   });
   let html = "", fit = { eps280: null, epslmax: null, r280: null, rlmax: null };
+  const series = [];
   try {
     if (conc.length >= 2) {
       const ec = ADC.extinctionCoefficient(conc, a280, path);
@@ -1171,6 +1173,8 @@ function calcEC() {
       html += rrow("&epsilon;280", Math.round(ec.eps).toLocaleString() + " M\u207b\u00b9cm\u207b\u00b9", "primary");
       html += rrow("R\u00b2 (280 nm)", fmt(ec.rSquared, 5));
       html += rrow("slope / intercept", `${fmt(ec.slope, 1)} / ${fmt(ec.intercept, 4)}`);
+      series.push({ label: "A\u2082\u2088\u2080", color: "#AB3635",
+        pts: conc.map((c, i) => [c, a280[i]]), slope: ec.slope, intercept: ec.intercept, r2: ec.rSquared });
     }
     if (concL.length >= 2) {
       const ecL = ADC.extinctionCoefficient(concL, almaxV, path);
@@ -1178,11 +1182,66 @@ function calcEC() {
       html += rrow("&epsilon;&lambda;max", Math.round(ecL.eps).toLocaleString() + " M\u207b\u00b9cm\u207b\u00b9", fit.eps280 === null ? "primary" : "");
       html += rrow("R\u00b2 (\u03bbmax)", fmt(ecL.rSquared, 5));
       if (fit.eps280 !== null && ecL.eps) html += rrow("CF@280 (&epsilon;280/&epsilon;&lambda;max)", fmt(fit.eps280 / ecL.eps, 3));
+      series.push({ label: "A\u03bbmax", color: "#1f6f8b",
+        pts: concL.map((c, i) => [c, almaxV[i]]), slope: ecL.slope, intercept: ecL.intercept, r2: ecL.rSquared });
     }
-    if (!html) { $("ec_results").innerHTML = placeholder("Enter at least 2 points with a concentration and A280"); ecLastFit = null; return; }
+    if (!html) { $("ec_results").innerHTML = placeholder("Enter at least 2 points with a concentration and A280"); $("ec_chart").innerHTML = ""; ecLastFit = null; return; }
     ecLastFit = fit;
     $("ec_results").innerHTML = html;
-  } catch (e) { $("ec_results").innerHTML = placeholder(e.message); ecLastFit = null; }
+    $("ec_chart").innerHTML = renderEcChart(series, factor);
+  } catch (e) { $("ec_results").innerHTML = placeholder(e.message); $("ec_chart").innerHTML = ""; ecLastFit = null; }
+}
+
+// Beer-Lambert plot: absorbance vs. concentration with the least-squares fit
+// line for each series. Pure SVG (no external library), driven by the same
+// slope/intercept the core returns so it cannot drift from the reported eps.
+function renderEcChart(series, factor) {
+  const unitLabels = { "0.000001": "\u00b5M", "1e-6": "\u00b5M", "1e-9": "nM", "0.001": "mM", "1": "M" };
+  const unit = unitLabels[String(factor)] || "M";
+  const sc = 1 / factor; // convert molar back to display unit for axis
+  const W = 520, H = 300, mL = 58, mR = 96, mT = 16, mB = 46;
+  const pw = W - mL - mR, ph = H - mT - mB;
+  const allX = [], allY = [];
+  series.forEach((s) => s.pts.forEach(([x, y]) => { allX.push(x); allY.push(y); }));
+  let xMin = 0, xMax = Math.max(...allX), yMin = 0, yMax = Math.max(...allY);
+  if (xMax === xMin) xMax = xMin + 1;
+  if (yMax === yMin) yMax = yMin + 1;
+  yMax *= 1.08; xMax *= 1.04;
+  const px = (x) => mL + (x - xMin) / (xMax - xMin) * pw;
+  const py = (y) => mT + ph - (y - yMin) / (yMax - yMin) * ph;
+  const esc = (n) => (n).toLocaleString("en-US", { maximumFractionDigits: 4 });
+  let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px;font-family:inherit" role="img" aria-label="Absorbance vs concentration">`;
+  svg += `<rect x="${mL}" y="${mT}" width="${pw}" height="${ph}" fill="#fff" stroke="var(--line)"/>`;
+  // gridlines + ticks (5 each)
+  for (let i = 0; i <= 4; i++) {
+    const gy = mT + ph * i / 4, yv = yMax - (yMax - yMin) * i / 4;
+    svg += `<line x1="${mL}" y1="${gy.toFixed(1)}" x2="${mL + pw}" y2="${gy.toFixed(1)}" stroke="var(--line)" stroke-dasharray="2 3"/>`;
+    svg += `<text x="${mL - 8}" y="${(gy + 3.5).toFixed(1)}" text-anchor="end" font-size="10.5" fill="var(--faint)">${esc(yv)}</text>`;
+    const gx = mL + pw * i / 4, xv = (xMin + (xMax - xMin) * i / 4) * sc;
+    svg += `<text x="${gx.toFixed(1)}" y="${mT + ph + 16}" text-anchor="middle" font-size="10.5" fill="var(--faint)">${esc(xv)}</text>`;
+  }
+  // axis titles
+  svg += `<text x="${mL + pw / 2}" y="${H - 6}" text-anchor="middle" font-size="11.5" fill="var(--muted)">Concentration (${unit})</text>`;
+  svg += `<text x="14" y="${mT + ph / 2}" text-anchor="middle" font-size="11.5" fill="var(--muted)" transform="rotate(-90 14 ${mT + ph / 2})">Absorbance (AU)</text>`;
+  // series: fit line then points
+  series.forEach((s) => {
+    const y1 = s.intercept + s.slope * xMin, y2 = s.intercept + s.slope * xMax;
+    const cy1 = Math.max(mT, Math.min(mT + ph, py(y1))), cy2 = Math.max(mT, Math.min(mT + ph, py(y2)));
+    svg += `<line x1="${px(xMin).toFixed(1)}" y1="${cy1.toFixed(1)}" x2="${px(xMax).toFixed(1)}" y2="${cy2.toFixed(1)}" stroke="${s.color}" stroke-width="1.6" opacity="0.85"/>`;
+    s.pts.forEach(([x, y]) => {
+      svg += `<circle cx="${px(x).toFixed(1)}" cy="${py(y).toFixed(1)}" r="3.6" fill="${s.color}" stroke="#fff" stroke-width="1"/>`;
+    });
+  });
+  // legend
+  series.forEach((s, i) => {
+    const ly = mT + 8 + i * 18, lx = mL + pw + 12;
+    svg += `<line x1="${lx}" y1="${ly}" x2="${lx + 16}" y2="${ly}" stroke="${s.color}" stroke-width="1.6"/>`;
+    svg += `<circle cx="${lx + 8}" cy="${ly}" r="3.4" fill="${s.color}" stroke="#fff" stroke-width="1"/>`;
+    svg += `<text x="${lx + 21}" y="${ly + 3.5}" font-size="11" fill="var(--ink)">${s.label}</text>`;
+    svg += `<text x="${lx}" y="${ly + 15}" font-size="9.5" fill="var(--faint)">R\u00b2 ${fmt(s.r2, 4)}</text>`;
+  });
+  svg += `</svg>`;
+  return svg;
 }
 function fillFromEC() {
   if (!ecLastFit || (ecLastFit.eps280 === null && ecLastFit.epslmax === null)) { $("nd_msg").textContent = "Run Compute \u03b5 first."; return; }
