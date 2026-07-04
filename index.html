@@ -150,6 +150,21 @@ table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:poin
 .info-link{background:none;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:5px 12px;
   font-size:12px;cursor:pointer;font-weight:500}
 .info-link:hover{border-color:var(--accent);color:var(--accent)}
+/* global active-ADC bar (identity travels with you across every tab) */
+.adcbar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);
+  border-left:3px solid var(--accent);border-radius:10px;padding:11px 16px;margin-bottom:var(--s3)}
+.adcbar .lead{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:600;white-space:nowrap}
+.adcbar .fld{display:flex;align-items:center;gap:7px}
+.adcbar .fld label{font-size:11.5px;color:var(--muted);font-weight:500;white-space:nowrap}
+.adcbar input{padding:6px 10px;font-size:12.5px;height:32px}
+.adcbar input#adc_id{width:130px;font-weight:600;color:var(--accent)}
+.adcbar input#adc_operator{width:80px}
+.adcbar input#adc_date{width:140px;font-family:var(--mono)}
+.adcbar input#adc_notes{flex:1;min-width:150px}
+.adcbar .hint{font-size:11px;color:var(--faint);flex-basis:100%;margin-top:-2px}
+table.dye td.editable-id{cursor:text;position:relative}
+table.dye td.editable-id:hover{background:var(--accent-soft);outline:1px dashed var(--accent)}
+table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--faint);margin-left:6px;opacity:.5}
 </style>
 </head>
 <body>
@@ -168,6 +183,16 @@ table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:poin
   <button data-tab="definitions">Definitions</button>
 </nav>
 <main class="wrap">
+
+<!-- ============ Global active-ADC identity bar ============ -->
+<div class="adcbar">
+  <span class="lead">Active ADC</span>
+  <div class="fld"><label for="adc_id">ID</label><input id="adc_id" placeholder="ADC-001"></div>
+  <div class="fld"><label for="adc_operator">Operator</label><input id="adc_operator" placeholder="initials"></div>
+  <div class="fld"><label for="adc_date">Date</label><input id="adc_date" type="date"></div>
+  <div class="fld" style="flex:1"><label for="adc_notes">Notes</label><input id="adc_notes" placeholder="lot, buffer, comments\u2026"></div>
+  <span class="hint">These travel with you &mdash; whatever is set here is attached to the next result you log, from any tab. Blank ID auto-numbers.</span>
+</div>
 
 <!-- ============ DAR (UV/Vis · HIC · LC-MS) ============ -->
 <section class="panel active" id="panel-dar">
@@ -402,14 +427,10 @@ table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:poin
 
     <div class="split" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div class="regbox">
-        <p class="sub" style="font-weight:600">Add / annotate an ADC identity</p>
-        <div class="grid cols3">
-          <label class="field"><span>ADC ID</span><input id="reg_id" placeholder="ADC-001"></label>
-          <label class="field"><span>Date</span><input id="reg_date" type="date"></label>
-          <label class="field"><span>Operator</span><input id="reg_operator" placeholder="initials"></label>
-        </div>
-        <label class="field" style="margin-top:8px"><span>Notes</span><input id="reg_notes" placeholder="lot, buffer, comments..."></label>
-        <p class="sub">These fields are attached to whatever you log next. The ADC&nbsp;ID ties multiple assays (UV, HIC, LC-MS&hellip;) to the same conjugate.</p>
+        <p class="sub" style="font-weight:600">How identity works</p>
+        <p class="sub" style="line-height:1.6">Set the <b>Active&nbsp;ADC</b> ID, operator, date and notes in the bar at the top of the page &mdash; it stays with you on every tab, so you name the conjugate <i>while you work</i>, not afterward. Whatever is set there is attached to the next result you log.</p>
+        <p class="sub" style="line-height:1.6;margin-top:8px">The ADC&nbsp;ID ties multiple assays (UV, HIC, LC-MS&hellip;) to the same conjugate. To rename one later, <b>click its ID</b> in the table below &mdash; you'll be asked whether to rename every assay sharing that ID.</p>
+        <button class="ghost" style="margin-top:4px" onclick="$('adc_id').focus();$('adc_id').scrollIntoView({block:'center',behavior:'smooth'})">Edit active ADC &uarr;</button>
       </div>
       <div class="regbox" id="reg_summary">
         <p class="sub" style="font-weight:600">Summary</p>
@@ -1326,17 +1347,17 @@ function capturePanel(panel) {
   return { assay: panel };
 }
 function logToRegistry(panel) {
-  const idRaw = $("reg_id").value.trim();
+  const idRaw = $("adc_id").value.trim();
   const id = idRaw || ("ADC-" + String(registry.length + 1).padStart(3, "0"));
   const msg = $("log_" + panel + "_msg");
   let cap;
   try { cap = capturePanel(panel); }
   catch (e) { if (msg) { msg.textContent = "compute a valid result first"; msg.style.color = "var(--warn)"; } return; }
-  const userNote = $("reg_notes").value.trim();
+  const userNote = $("adc_notes").value.trim();
   const notes = [userNote, cap.autonote].filter(Boolean).join(" | ");
   const today = new Date().toISOString().slice(0, 10);
   const rec = ADC.makeRegistryRecord({
-    id, date: $("reg_date").value || today, operator: $("reg_operator").value,
+    id, date: $("adc_date").value || today, operator: $("adc_operator").value,
     assay: cap.assay, route: cap.route, dar: cap.dar,
     conc_mgml: cap.conc_mgml, conc_uM: cap.conc_uM, free_thiols: cap.free_thiols, notes,
   });
@@ -1345,7 +1366,28 @@ function logToRegistry(panel) {
   renderRegistry();
   if (msg) { msg.textContent = "logged as " + id; msg.style.color = "var(--accent)";
     setTimeout(() => { msg.textContent = ""; }, 4000); }
-  if (!idRaw) $("reg_id").value = id;
+  if (!idRaw) $("adc_id").value = id;
+}
+// Inline rename from the registry table. One ADC ID ties multiple assays
+// together, so offer to rename every record sharing the old ID.
+function renameRegId(i) {
+  const rec = registry[i];
+  if (!rec) return;
+  const oldId = rec.id;
+  const next = prompt("Rename ADC ID:", oldId);
+  if (next === null) return;
+  const newId = next.trim();
+  if (!newId || newId === oldId) return;
+  const siblings = registry.filter((r) => r.id === oldId).length;
+  let applyAll = false;
+  if (siblings > 1) {
+    applyAll = confirm(`"${oldId}" is used by ${siblings} records.\n\nOK = rename all ${siblings} to "${newId}"\nCancel = rename only this one row.`);
+  }
+  registry.forEach((r) => { if (applyAll ? r.id === oldId : r === rec) r.id = newId; });
+  // keep the active-ADC bar in sync if it was pointing at the old id
+  if ($("adc_id").value.trim() === oldId) $("adc_id").value = newId;
+  persistRegistry();
+  renderRegistry();
 }
 function deleteRegRow(i) { registry.splice(i, 1); persistRegistry(); renderRegistry(); }
 function clearRegistry() {
@@ -1377,7 +1419,9 @@ function renderRegistry() {
     let v = r[c];
     if (v === null || v === undefined || v === "") v = "";
     else if (numCols.has(c) && typeof v === "number") v = (v === Math.round(v)) ? String(v) : v.toFixed(3);
-    return `<td${numCols.has(c) ? " class='num'" : ""}>${String(v).replace(/</g, "&lt;")}</td>`;
+    const safe = String(v).replace(/</g, "&lt;");
+    if (c === "id") return `<td class="editable-id" title="click to rename this ADC" onclick="renameRegId(${i})">${safe}</td>`;
+    return `<td${numCols.has(c) ? " class='num'" : ""}>${safe}</td>`;
   }).join("") + `<td><button class="delrow" title="delete" onclick="deleteRegRow(${i})">&times;</button></td></tr>`).join("");
   t.innerHTML = head + body;
   renderRegSummary();
@@ -1416,7 +1460,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("ec_results").innerHTML = placeholder("Enter a dilution series and press Compute \u03b5");
   calcUV(); calcEllman(); calcYield();
   loadRegistry(); renderRegistry();
-  try { $("reg_date").value = new Date().toISOString().slice(0, 10); } catch (e) {}
+  try { $("adc_date").value = new Date().toISOString().slice(0, 10); } catch (e) {}
   // Run the core self-check and surface the badge in the footer.
   try {
     const res = ADC.selfCheck();
