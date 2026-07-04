@@ -6,12 +6,14 @@ planning. The scientific math lives in a **pure, tested calculation core** that 
 implemented identically in Python and JavaScript; the web UI is a thin layer that
 only calls core functions — no formulas are ever inlined in event handlers.
 
-All formulas were reverse-engineered and validated against the two reference
-materials in this project:
+Every formula is the standard Beer–Lambert / DAR relationship from the
+bioconjugation literature, restated once in `adc_spec.md` and covered by the test
+suite. The methods implemented:
 
-- `Calculation_DAR_conjugation.xlsx` — UV/Vis DAR spreadsheet + embedded dye library.
-- `250811 Bioconjugation protocols and analyses.pdf` — conjugation routes and
-  analytical methods (Ellman, HIC, LC-MS, concentration of unknown-payload ADCs).
+- UV/Vis DAR + embedded dye/payload library, with an extinction-coefficient
+  calculator for new dyes and payloads.
+- Conjugation routes and analytical methods: Ellman free-thiol assay, HIC,
+  LC-MS, and concentration of unknown-payload ADCs.
 
 ---
 
@@ -19,7 +21,7 @@ materials in this project:
 
 | File | Role |
 |------|------|
-| `adc_calculator.html` | The app. Single self-contained file (styles + markup + core + UI). Open it in any browser — no server, no build step, no network. |
+| `index.html` | The app. Single self-contained file (styles + markup + core + UI). Open it in any browser — no server, no build step, no network. |
 | `adc_core.py` | Pure Python calculation core. Zero dependencies (stdlib only). |
 | `adc_core.js` | Pure JavaScript ES-module port of the core. Identical signatures (camelCase) and identical numeric results. |
 | `test_adc_core.py` | pytest suite — 21 tests pinning every formula to a golden value. |
@@ -36,9 +38,9 @@ materials in this project:
       ▼                   ▼
   adc_core.py         adc_core.js
       │                   │
- test_adc_core.py    selfCheck()     ← both validated against the SAME golden values
+ test_adc_core.py    selfCheck()     ← both pinned to the SAME golden values
                          │
-                  adc_calculator.html
+                     index.html
                   (UI calls ADC.* only)
 ```
 
@@ -75,12 +77,10 @@ payload λmax, then solves the coupled equations for DAR and ADC concentration.
 - `ε280,ADC(molar) = ε280,mAb + DAR · ε280,LP`; `ε280,ADC(mass) = ε_molar / MW_ADC`
 - `[ADC] mg/mL = A280 · DF / ε280,ADC(mass)`; `[ADC] µM = mg/mL / MW_ADC · 1e6`
 - Unknown-payload fallback: `[ADC] = (A280 − Aλmax·ε280,LP/ελmax,LP) · DF / ε280,mAb(mass)`
-- Source: spreadsheet `Calculation_DAR_conjugation.xlsx`; PDF p.12.
-
-> **Note on the spreadsheet.** The original sheet defines ελmax,mAb ≡ R·ε280,mAb,
-> which is circular and algebraically forces DAR → 0. The app exposes ελmax,mAb as
-> an independent input (default 0 for a bare IgG in the visible range); the "Reproduce
-> spreadsheet" preset restores the circular definition and reproduces DAR = 0 exactly,
+> **Note on the circular-ε case.** If ελmax,mAb is defined as R·ε280,mAb it becomes
+> circular and algebraically forces DAR → 0. The app exposes ελmax,mAb as an
+> independent input (default 0 for a bare IgG in the visible range); the
+> "Circular-ε case" preset restores that definition and reproduces DAR = 0 exactly,
 > retained as a regression fixture (**Case A**). The "AF647 payload" preset (**Case B**)
 > is the realistic case giving DAR ≈ 2.414.
 
@@ -112,10 +112,17 @@ DAR from deconvoluted mass-spec peak intensities.
 Recovered mass, moles, and the buffer volume needed to hit a target formulation
 concentration, from starting mass and measured post-conjugation concentration.
 
-### 7. Dye / Payload Library — `get_dye`, `DYE_LIBRARY`
-22 reference entries (Alexa Fluor AF350–AF790 + 3 pHrodo dyes) with MW, ελmax, the
-CF@280 correction factor, ε280 (= ελmax·CF280), and λmax. Selecting a row auto-fills
-the UV/Vis panel. Source: dye sheet embedded in the spreadsheet.
+### 7. Dye / Payload Library — `get_dye`, `DYE_LIBRARY`, `extinction_coefficient`
+22 built-in reference entries (Alexa Fluor AF350–AF790 + 3 pHrodo dyes) with MW,
+ελmax, the CF@280 correction factor, ε280 (= ελmax·CF280), and λmax. Selecting a
+row auto-fills the UV/Vis panel.
+
+You can add your own dyes and payloads: the **extinction-coefficient calculator**
+fits a Beer–Lambert dilution series (least squares, ε = slope / path length) to
+give ε280 and ελmax with R², and the **Add to library** form saves the result.
+User dyes persist in the browser (`localStorage`, key `adc_user_dyes_v1`), are
+merged into the table and the UV/Vis selector, marked as yours, and are deletable;
+the 22 built-ins stay read-only so the core self-check is unaffected.
 
 ### 8. ADC Registry — `make_registry_record`, `registry_to_csv`, `summarize_registry`
 A running log so information accumulates as more ADCs are made and tested. Every
@@ -125,9 +132,8 @@ route + auto-note) against an ADC ID, date, operator, and free-text notes.
 
 - **Persistence:** records are stored in the browser's `localStorage`, so the log
   survives closing the tab and reopening the file on the same machine. No server.
-- **Portability:** *Export CSV* and *Export JSON* download the whole log;
-  *Import JSON* restores or merges a file (e.g. a colleague's log). Nothing is
-  locked in.
+- **Portability:** *Export CSV* downloads the whole log for sharing, backup, or
+  analysis in a spreadsheet. Nothing is locked in.
 - **Aggregation:** a live Summary panel shows record count, distinct ADC IDs,
   counts by assay, and DAR statistics (n / mean / sample-SD / range) across every
   logged prep.
@@ -164,9 +170,10 @@ is shown in the footer badge.
 
 ## How to open the app
 
-Open `adc_calculator.html` in any modern browser (double-click, or
-`File → Open`). It is fully self-contained — no server, no build, no internet
-connection required. The footer self-check badge confirms the calculation core is
+Use the hosted version at **https://gitmcginty.github.io/adc-calculator/**, or
+open `index.html` in any modern browser (double-click, or `File → Open`). It is
+fully self-contained — no server, no build, no internet connection required. The
+footer self-check badge confirms the calculation core is
 intact.
 
 ---
@@ -175,9 +182,9 @@ intact.
 
 | Check | Result |
 |-------|--------|
-| Python `pytest` | 21 / 21 pass |
-| JavaScript `selfCheck()` | 17 / 17 golden values |
-| Live DOM (headless browser, all panels) | UV DAR 2.414 · [ADC] 33.689 µM · HIC 2.2 · LC-MS 5.2 · Thiomab plan · 22-dye library · registry log/persist/export — all match |
+| Python `pytest` | 26 / 26 pass |
+| JavaScript `selfCheck()` | 16 / 16 golden values |
+| Live DOM (headless browser, all panels) | UV DAR 2.414 · [ADC] 33.689 µM · HIC 2.2 · LC-MS 5.2 · Thiomab plan · ε-calculator ε280 50000 · 22-dye library + user dyes · registry log/persist/CSV — all match |
 | Registry CSV, Python vs JS | byte-identical output on the same records |
 
 Golden values (rel. tolerance 1e-6) are listed in full in `adc_spec.md §9`.

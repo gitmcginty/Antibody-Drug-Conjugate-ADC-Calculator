@@ -1,9 +1,9 @@
 """adc_core — pure calculation core for the ADC Calculator.
 
 Zero UI, zero I/O (the dye library is embedded as a literal). Every function
-maps directly to a formula in ``adc_spec.md`` and is validated by
-``test_adc_core.py`` against the golden values in the spreadsheet
-``Calculation_DAR_conjugation.xlsx`` and the protocols PDF.
+maps directly to a formula in ``adc_spec.md`` and is pinned by
+``test_adc_core.py`` to fixed golden values, so the Python core, the JS core
+and the embedded HTML copy cannot drift from one another.
 
 Units are stated in every signature. Molar extinction coefficients are in
 M^-1 cm^-1; mass extinction coefficients in (mg/mL)^-1 cm^-1.
@@ -367,6 +367,63 @@ def yield_and_formulation(
         v_final = recovered / target_conc_mgml
         v_change = v_final - volume_mL
     return YieldResult(recovered, yld, nmol, v_final, v_change)
+
+
+# ==========================================================================
+# 9b. Extinction-coefficient determination  (spec §9b)
+# ==========================================================================
+# Ordinary least-squares fit of a Beer-Lambert dilution series. For a set of
+# known concentrations c (mol/L) and measured absorbances A at a fixed
+# wavelength and path length L (cm), Beer-Lambert gives A = eps * L * c, so a
+# straight-line fit A vs c has slope = eps * L, hence eps = slope / L.
+def linear_regression(xs, ys) -> dict:
+    """Ordinary least-squares line y = slope*x + intercept.
+
+    Returns slope, intercept, r_squared and n. Requires >= 2 points with at
+    least two distinct x values.
+    """
+    xs = [float(x) for x in xs]
+    ys = [float(y) for y in ys]
+    n = len(xs)
+    if n != len(ys):
+        raise ValueError("xs and ys must have equal length")
+    if n < 2:
+        raise ValueError("need at least 2 points")
+    mx = sum(xs) / n
+    my = sum(ys) / n
+    sxx = sum((x - mx) ** 2 for x in xs)
+    if sxx == 0.0:
+        raise ValueError("need at least two distinct x values")
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xs, ys))
+    slope = sxy / sxx
+    intercept = my - slope * mx
+    ss_tot = sum((y - my) ** 2 for y in ys)
+    if ss_tot == 0.0:
+        r_squared = 1.0
+    else:
+        ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
+        r_squared = 1.0 - ss_res / ss_tot
+    return {"slope": slope, "intercept": intercept, "r_squared": r_squared, "n": n}
+
+
+def extinction_coefficient(
+    concentrations_M, absorbances, path_length_cm: float = 1.0
+) -> dict:
+    """Molar extinction coefficient (M^-1 cm^-1) from a dilution series.
+
+    Fits absorbance vs concentration by least squares; eps = slope / path length.
+    Returns eps plus the underlying slope, intercept and r_squared.
+    """
+    if path_length_cm <= 0:
+        raise ValueError("path length must be positive")
+    fit = linear_regression(concentrations_M, absorbances)
+    return {
+        "eps": fit["slope"] / path_length_cm,
+        "slope": fit["slope"],
+        "intercept": fit["intercept"],
+        "r_squared": fit["r_squared"],
+        "n": fit["n"],
+    }
 
 
 # ==========================================================================

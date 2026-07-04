@@ -2,9 +2,10 @@
 
 This document defines every formula implemented by the calculation core
 (`adc_core.py` / `adc_core.js`). It is the single source of truth: both
-implementations and the test suite are validated against the **golden values**
-in §9. Sources: `Calculation_DAR_conjugation.xlsx` (UV/Vis DAR sheet + dye
-library) and `250811 Bioconjugation protocols and analyses.pdf`.
+implementations and the test suite are pinned to the **golden values** in §9,
+which keeps the two cores and the embedded HTML copy from drifting apart. The
+formulas are the standard Beer–Lambert / DAR relationships from the
+bioconjugation literature.
 
 All functions are **pure** (no UI, no I/O). Units are explicit in every
 signature.
@@ -150,6 +151,35 @@ molar_amount_nmol = recovered_mass_mg / MW_ADC · 1e6
 V_final_mL        = recovered_mass_mg / target_conc_mgml
 V_diluent_to_add  = V_final_mL − current_volume_mL   (if concentrating: negative → concentrate)
 ```
+
+---
+
+## 8b. Extinction-coefficient determination (Beer–Lambert regression)
+
+Given a dilution series of known molar concentrations `c_i` (mol/L) and
+measured absorbances `A_i` at one wavelength and path length `L` (cm),
+Beer–Lambert gives `A = ε·L·c`. An ordinary least-squares fit of `A` vs `c`
+yields:
+
+```
+slope     = Σ(c_i − c̄)(A_i − Ā) / Σ(c_i − c̄)²
+intercept = Ā − slope · c̄
+R²        = 1 − Σ(A_i − (slope·c_i + intercept))² / Σ(A_i − Ā)²
+ε         = slope / L                       # M⁻¹ cm⁻¹
+```
+
+`linear_regression(xs, ys)` → `{slope, intercept, r_squared, n}` (needs ≥2
+points and ≥2 distinct x). `extinction_coefficient(concentrations_M,
+absorbances, path_length_cm=1.0)` → `{eps, slope, intercept, r_squared, n}`.
+Run the fit separately on the A280 column and the Aλmax column to obtain
+ε280 and ελmax for a new dye/payload.
+
+**Golden fixture:** `c = [1,2,3,4,5] µM`, `A280 = 0.01 + 50000·c`,
+`Aλmax = 120000·c`.
+- `linear_regression(c, A280)` → slope **50000.0**, intercept **0.01**, R² **1.0**
+- `extinction_coefficient(c, A280, 1.0).eps` → **50000.0**
+- `extinction_coefficient(c, A280, 0.5).eps` → **100000.0**
+- `extinction_coefficient(c, Aλmax, 1.0).eps` → **120000.0**
 
 ---
 

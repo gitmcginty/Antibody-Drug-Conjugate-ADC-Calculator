@@ -2,8 +2,9 @@
  * adc_core.js — pure calculation core for the ADC Calculator (ES module).
  *
  * Direct 1:1 port of adc_core.py. Zero DOM, zero I/O. Every function maps to a
- * formula in adc_spec.md and is validated against the same golden values as the
- * Python test suite (see selfCheck() at the bottom / node adc_core.js).
+ * formula in adc_spec.md and is pinned to the same golden values as the Python
+ * test suite (see selfCheck() at the bottom / node adc_core.js), so the two
+ * cores and the embedded HTML copy cannot drift apart.
  *
  * Units: molar epsilon in M^-1 cm^-1; mass epsilon in (mg/mL)^-1 cm^-1.
  */
@@ -185,6 +186,48 @@ export function yieldAndFormulation(concMgml, volumeML, mwAdc,
            vFinalML: vFinal, vChangeML: vChange };
 }
 
+// ── 9b. Extinction-coefficient determination ────────────────────────────────
+// Ordinary least-squares fit of a Beer-Lambert dilution series. For known
+// concentrations c (mol/L) and absorbances A at fixed wavelength and path
+// length L (cm), Beer-Lambert gives A = eps*L*c, so a line A vs c has
+// slope = eps*L, hence eps = slope / L.
+export function linearRegression(xs, ys) {
+  xs = xs.map(Number);
+  ys = ys.map(Number);
+  const n = xs.length;
+  if (n !== ys.length) throw new Error("xs and ys must have equal length");
+  if (n < 2) throw new Error("need at least 2 points");
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sxx += (xs[i] - mx) ** 2; sxy += (xs[i] - mx) * (ys[i] - my); }
+  if (sxx === 0) throw new Error("need at least two distinct x values");
+  const slope = sxy / sxx;
+  const intercept = my - slope * mx;
+  let ssTot = 0;
+  for (let i = 0; i < n; i++) ssTot += (ys[i] - my) ** 2;
+  let rSquared;
+  if (ssTot === 0) { rSquared = 1.0; }
+  else {
+    let ssRes = 0;
+    for (let i = 0; i < n; i++) ssRes += (ys[i] - (slope * xs[i] + intercept)) ** 2;
+    rSquared = 1.0 - ssRes / ssTot;
+  }
+  return { slope, intercept, rSquared, n };
+}
+
+export function extinctionCoefficient(concentrationsM, absorbances, pathLengthCm = 1.0) {
+  if (pathLengthCm <= 0) throw new Error("path length must be positive");
+  const fit = linearRegression(concentrationsM, absorbances);
+  return {
+    eps: fit.slope / pathLengthCm,
+    slope: fit.slope,
+    intercept: fit.intercept,
+    rSquared: fit.rSquared,
+    n: fit.n,
+  };
+}
+
 // ── 10. Embedded dye / payload library (spreadsheet cols L-R) ───────────────
 export const DYE_LIBRARY = [
   { name: "AF350", mw: 410, e_lmax: 19000, cf280: 0.19, e280: 3610, lmax: 350, comment: null },
@@ -327,6 +370,17 @@ export function selfCheck() {
   ok(rs.dar_mean, 3.271333333333333, "registry DAR mean");
   ok(rs.dar_sd, 1.6736981010126448, "registry DAR sd");
   results.push("PASS registry (3 records)");
+  // extinction-coefficient regression
+  const CONC = [1e-6, 2e-6, 3e-6, 4e-6, 5e-6];
+  const AB280 = CONC.map((c) => 0.01 + 50000.0 * c);
+  const fit = linearRegression(CONC, AB280);
+  ok(fit.slope, 50000.0, "linreg slope");
+  ok(fit.intercept, 0.01, "linreg intercept");
+  ok(fit.rSquared, 1.0, "linreg r2");
+  const ec = extinctionCoefficient(CONC, AB280, 1.0);
+  ok(ec.eps, 50000.0, "eps L=1");
+  ok(extinctionCoefficient(CONC, AB280, 0.5).eps, 100000.0, "eps L=0.5");
+  results.push("PASS extinction coefficient (regression)");
   if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
   return results;

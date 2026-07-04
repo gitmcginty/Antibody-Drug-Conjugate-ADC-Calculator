@@ -232,5 +232,45 @@ def test_summarize_registry_stats():
     assert s["by_assay"]["uv"] == 1 and s["by_id"]["ADC-001"] == 2
 
 
+# ---- Extinction-coefficient determination (regression) ----------------------
+CONC_M = [1e-6, 2e-6, 3e-6, 4e-6, 5e-6]
+AB280 = [0.01 + 50000.0 * c for c in CONC_M]     # eps=50000, intercept=0.01
+AB_LMAX = [120000.0 * c for c in CONC_M]          # eps=120000, intercept=0
+
+
+def test_linear_regression_exact_line():
+    fit = core.linear_regression(CONC_M, AB280)
+    assert fit["slope"] == approx(50000.0)
+    assert fit["intercept"] == approx(0.01)
+    assert fit["r_squared"] == approx(1.0)
+    assert fit["n"] == 5
+
+
+def test_extinction_coefficient_path_length_1():
+    ec = core.extinction_coefficient(CONC_M, AB280, 1.0)
+    assert ec["eps"] == approx(50000.0)
+    assert ec["r_squared"] == approx(1.0)
+
+
+def test_extinction_coefficient_path_length_half():
+    ec = core.extinction_coefficient(CONC_M, AB280, 0.5)
+    assert ec["eps"] == approx(100000.0)
+
+
+def test_extinction_coefficient_lmax_series():
+    ec = core.extinction_coefficient(CONC_M, AB_LMAX, 1.0)
+    assert ec["eps"] == approx(120000.0)
+    assert ec["intercept"] == pytest.approx(0.0, abs=1e-9)
+
+
+def test_linear_regression_rejects_degenerate_input():
+    with pytest.raises(ValueError):
+        core.linear_regression([1.0], [1.0])          # < 2 points
+    with pytest.raises(ValueError):
+        core.linear_regression([2.0, 2.0], [1.0, 3.0])  # no distinct x
+    with pytest.raises(ValueError):
+        core.extinction_coefficient(CONC_M, AB280, 0.0)  # bad path length
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

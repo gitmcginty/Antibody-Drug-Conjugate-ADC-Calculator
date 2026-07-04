@@ -88,6 +88,11 @@ table.dye{width:100%;border-collapse:collapse;font-size:13px}
 table.dye th,table.dye td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
 table.dye th{background:var(--field);font-weight:600;position:sticky;top:53px;cursor:pointer;user-select:none}
 table.dye td.num,table.dye th.num{text-align:right;font-family:var(--mono)}
+.tag-user{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--accent);background:var(--accent-soft);border-radius:4px;padding:1px 6px;vertical-align:middle}
+.dye-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;line-height:1;padding:0 4px}
+.dye-del:hover{color:var(--warn)}
+table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
 table.dye tr:hover td{background:var(--accent-soft)}
 .dye-search{max-width:280px;margin-bottom:var(--s2)}
 .speciesrow{display:grid;grid-template-columns:70px 1fr 34px;gap:var(--s1);align-items:center;margin-bottom:8px}
@@ -118,7 +123,7 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 </head>
 <body>
 <header><div class="wrap"><h1>ADC Calculator</h1>
-<p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; core validated against reference spreadsheet &amp; protocols</p></div></header>
+<p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div></header>
 <nav class="tabs wrap" id="tabs">
   <button data-tab="dar" class="active">DAR</button>
   <button data-tab="conj">Conjugation Designer</button>
@@ -169,7 +174,7 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
           </details>
           <div class="pillrow">
             <button onclick="uvPreset('naked')">Example: mAb + AF647 (DAR&nbsp;&asymp;&nbsp;2.4)</button>
-            <button onclick="uvPreset('sheet')">Reproduce spreadsheet (DAR&nbsp;=&nbsp;0)</button>
+            <button onclick="uvPreset('sheet')">Circular-&epsilon; case (DAR&nbsp;=&nbsp;0)</button>
           </div>
         </div>
         <div>
@@ -290,10 +295,52 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 <section class="panel" id="panel-dyes">
   <div class="card">
     <h2>Dye / Payload Library</h2>
-    <p class="desc">Reference extinction coefficients for the Alexa Fluor series and pHrodo dyes, as used by the UV/Vis DAR panel. Click a column header to sort; click a row to load it into the UV/Vis calculator.</p>
+    <p class="desc">Reference extinction coefficients for the built-in Alexa Fluor series and pHrodo dyes plus any dyes/payloads you add, as used by the UV/Vis DAR panel. Click a column header to sort; click a row to load it into the UV/Vis calculator. Dyes you add are marked <span class="tag-user">yours</span> and can be deleted; built-ins are read-only.</p>
     <input class="dye-search" id="dye_q" placeholder="Filter by name..." oninput="renderDyes()">
     <div style="overflow-x:auto"><table class="dye" id="dye_table"></table></div>
-    <p class="sub">&epsilon;280 = &epsilon;&lambda;max &times; correction factor. pHrodo entries: dilute 1:1 with 1&nbsp;M H&#8322;SO&#8324; before reading.</p>
+    <p class="sub">&epsilon;280 = &epsilon;&lambda;max &times; correction factor. pHrodo entries: dilute 1:1 with 1&nbsp;M H&#8322;SO&#8324; before reading. Your dyes are stored in this browser only.</p>
+  </div>
+
+  <div class="card">
+    <h2>Extinction-coefficient calculator</h2>
+    <p class="desc">Determine &epsilon;280 and &epsilon;&lambda;max for a new dye or payload from a Beer&ndash;Lambert dilution series. Enter known concentrations and the measured absorbance at 280&nbsp;nm and at &lambda;max for each. A least-squares fit gives &epsilon; = slope / path length (the math runs in the shared calculation core).</p>
+    <div class="grid cols3">
+      <label class="field"><span>Concentration unit</span>
+        <select id="ec_unit"><option value="1e-6">&micro;M</option><option value="1e-9">nM</option><option value="1e-3">mM</option><option value="1">M</option></select></label>
+      <label class="field"><span>Path length <span class="unit">cm</span></span>
+        <input id="ec_path" type="number" value="1" step="0.1"></label>
+      <label class="field"><span>&lambda;max <span class="unit">nm</span></span>
+        <input id="ec_lmax" type="number" placeholder="e.g. 650"></label>
+    </div>
+    <div class="speciesrow" style="grid-template-columns:1fr 1fr 1fr 34px;font-size:12px;color:var(--muted)">
+      <div>Concentration</div><div>A&#8322;&#8320;&#8320; (280&nbsp;nm)</div><div>A&#955;max</div><div></div>
+    </div>
+    <div id="ec_rows"></div>
+    <div class="btnrow">
+      <button class="ghost" onclick="addEcRow()">+ Add point</button>
+      <button class="act" onclick="calcEC()">Compute &epsilon;</button>
+    </div>
+    <div class="results" id="ec_results" style="margin-top:var(--s2)"></div>
+    <p class="sub">Need &ge;2 points with distinct concentrations. Leave A&lambda;max blank if you only want &epsilon;280.</p>
+  </div>
+
+  <div class="card">
+    <h2>Add dye / payload to library</h2>
+    <p class="desc">Save a new dye or payload to your library. It persists in this browser and appears in the table above and the UV/Vis payload selector. Use <strong>Compute &epsilon;</strong> above, then <strong>Fill from calculator</strong> to copy the fitted values in.</p>
+    <div class="grid cols3">
+      <label class="field"><span>Name</span><input id="nd_name" placeholder="e.g. MMAE-linker"></label>
+      <label class="field"><span>MW <span class="unit">g/mol</span></span><input id="nd_mw" type="number" placeholder="e.g. 1316"></label>
+      <label class="field"><span>&lambda;max <span class="unit">nm</span></span><input id="nd_lmax" type="number" placeholder="e.g. 650"></label>
+      <label class="field"><span>&epsilon;&lambda;max <span class="unit">M&#8315;&#185;cm&#8315;&#185;</span></span><input id="nd_elmax" type="number" placeholder="e.g. 240000"></label>
+      <label class="field"><span>&epsilon;280 <span class="unit">M&#8315;&#185;cm&#8315;&#185;</span></span><input id="nd_e280" type="number" placeholder="e.g. 9600"></label>
+      <label class="field"><span>CF@280 <span class="unit">auto</span></span><input id="nd_cf280" readonly placeholder="&epsilon;280 / &epsilon;&lambda;max"></label>
+    </div>
+    <label class="field"><span>Note <span class="unit">optional</span></span><input id="nd_comment" placeholder="e.g. vc-PAB-MMAE payload"></label>
+    <div class="btnrow">
+      <button class="ghost" onclick="fillFromEC()">Fill from calculator</button>
+      <button class="act" onclick="addUserDye()">Add to library</button>
+    </div>
+    <div id="nd_msg" class="sub"></div>
   </div>
 </section>
 
@@ -301,7 +348,7 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 <section class="panel" id="panel-registry">
   <div class="card">
     <h2>ADC Registry</h2>
-    <p class="desc">A running log of every ADC preparation and assay. Each calculator panel has a <b>&#8862; Log to registry</b> button that captures its current inputs and computed results here. Records are stored in this browser (localStorage) and persist across sessions on this machine. Export to CSV or JSON for sharing or backup; import a JSON file to restore or merge a colleague's log.</p>
+    <p class="desc">A running log of every ADC preparation and assay. Each calculator panel has a <b>&#8862; Log to registry</b> button that captures its current inputs and computed results here. Records are stored in this browser (localStorage) and persist across sessions on this machine. Export to CSV for sharing, backup, or analysis in a spreadsheet.</p>
 
     <div class="split" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div class="regbox">
@@ -322,9 +369,6 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 
     <div class="btnrow" style="margin-bottom:12px">
       <button class="act" onclick="exportRegistryCsv()">Export CSV</button>
-      <button class="ghost" onclick="exportRegistryJson()">Export JSON</button>
-      <button class="ghost" onclick="document.getElementById('reg_import').click()">Import JSON</button>
-      <input id="reg_import" type="file" accept="application/json,.json" style="display:none" onchange="importRegistryJson(this)">
       <button class="ghost danger" onclick="clearRegistry()">Clear all</button>
     </div>
 
@@ -334,15 +378,15 @@ table.dye td .delrow{background:none;border:none;color:var(--warn);cursor:pointe
 </section>
 
 </main>
-<div class="footer">ADC Calculator &middot; calculation core validated against <span style="font-family:var(--mono)">Calculation_DAR_conjugation.xlsx</span> and the bioconjugation protocols &middot; <span id="selfcheck_badge"></span></div>
+<div class="footer">ADC Calculator &middot; one pure calculation core (Python + JS + this page, kept in lock-step by a shared test suite) &middot; <span id="selfcheck_badge"></span></div>
 
 <script>
 /*
  * adc_core.js — pure calculation core for the ADC Calculator (ES module).
  *
  * Direct 1:1 port of adc_core.py. Zero DOM, zero I/O. Every function maps to a
- * formula in adc_spec.md and is validated against the same golden values as the
- * Python test suite (see selfCheck() at the bottom / node adc_core.js).
+ * formula in adc_spec.md and is pinned to the same golden values as the Python
+ * test suite, so this embedded copy cannot drift from adc_core.py / adc_core.js.
  *
  * Units: molar epsilon in M^-1 cm^-1; mass epsilon in (mg/mL)^-1 cm^-1.
  */
@@ -523,6 +567,40 @@ function yieldAndFormulation(concMgml, volumeML, mwAdc,
            vFinalML: vFinal, vChangeML: vChange };
 }
 
+// ── 9b. Extinction-coefficient determination ────────────────────────────────
+// OLS fit of a Beer-Lambert dilution series. A = eps*L*c, so slope = eps*L
+// and eps = slope / L.
+function linearRegression(xs, ys) {
+  xs = xs.map(Number); ys = ys.map(Number);
+  const n = xs.length;
+  if (n !== ys.length) throw new Error("xs and ys must have equal length");
+  if (n < 2) throw new Error("need at least 2 points");
+  const mx = xs.reduce((a, b) => a + b, 0) / n;
+  const my = ys.reduce((a, b) => a + b, 0) / n;
+  let sxx = 0, sxy = 0;
+  for (let i = 0; i < n; i++) { sxx += (xs[i] - mx) ** 2; sxy += (xs[i] - mx) * (ys[i] - my); }
+  if (sxx === 0) throw new Error("need at least two distinct x values");
+  const slope = sxy / sxx;
+  const intercept = my - slope * mx;
+  let ssTot = 0;
+  for (let i = 0; i < n; i++) ssTot += (ys[i] - my) ** 2;
+  let rSquared;
+  if (ssTot === 0) { rSquared = 1.0; }
+  else {
+    let ssRes = 0;
+    for (let i = 0; i < n; i++) ssRes += (ys[i] - (slope * xs[i] + intercept)) ** 2;
+    rSquared = 1.0 - ssRes / ssTot;
+  }
+  return { slope, intercept, rSquared, n };
+}
+
+function extinctionCoefficient(concentrationsM, absorbances, pathLengthCm = 1.0) {
+  if (pathLengthCm <= 0) throw new Error("path length must be positive");
+  const fit = linearRegression(concentrationsM, absorbances);
+  return { eps: fit.slope / pathLengthCm, slope: fit.slope,
+           intercept: fit.intercept, rSquared: fit.rSquared, n: fit.n };
+}
+
 // ── 10. Embedded dye / payload library (spreadsheet cols L-R) ───────────────
 const DYE_LIBRARY = [
   { name: "AF350", mw: 410, e_lmax: 19000, cf280: 0.19, e280: 3610, lmax: 350, comment: null },
@@ -634,6 +712,13 @@ function selfCheck() {
   results.push(ok(rs.dar_mean,3.271333333333333,"registry DAR mean"));
   results.push(ok(rs.dar_sd,1.6736981010126448,"registry DAR sd"));
   results.push("PASS registry (3 records)");
+  const CONC=[1e-6,2e-6,3e-6,4e-6,5e-6];
+  const AB280=CONC.map((c)=>0.01+50000.0*c);
+  const fit=linearRegression(CONC,AB280);
+  ok(fit.slope,50000.0,"linreg slope"); ok(fit.intercept,0.01,"linreg intercept"); ok(fit.rSquared,1.0,"linreg r2");
+  ok(extinctionCoefficient(CONC,AB280,1.0).eps,50000.0,"eps L=1");
+  ok(extinctionCoefficient(CONC,AB280,0.5).eps,100000.0,"eps L=0.5");
+  results.push("PASS extinction coefficient (regression)");
   if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
   return results;
@@ -647,6 +732,7 @@ const ADC = {
   ellmanFreeThiols, darHIC, darSpeciesFractions, darLcmsReduced, darLcmsIntact,
   darLcmsReducedBreakdown,
   molesFromMass, reagentVolumeUL, planConjugation, yieldAndFormulation,
+  linearRegression, extinctionCoefficient,
   getDye, DYE_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
   makeRegistryRecord, registryToCsv, summarizeRegistry, REGISTRY_FIELDS,
 };
@@ -898,23 +984,52 @@ function calcYield() {
 
 // ================= Dye library =================
 let dyeSort = { key: "lmax", dir: 1 };
+// ── User dye/payload library (browser-persistent, merged with built-ins) ────
+// The built-in ADC.DYE_LIBRARY stays immutable (its 22 entries anchor the core
+// self-check). User dyes live in a separate localStorage layer and are merged
+// only at render/selection time.
+const USER_DYE_KEY = "adc_user_dyes_v1";
+let userDyes = [];
+function loadUserDyes() {
+  try { userDyes = JSON.parse(localStorage.getItem(USER_DYE_KEY) || "[]"); }
+  catch (e) { userDyes = []; }
+  if (!Array.isArray(userDyes)) userDyes = [];
+}
+function persistUserDyes() {
+  try { localStorage.setItem(USER_DYE_KEY, JSON.stringify(userDyes)); }
+  catch (e) { alert("Could not save to browser storage: " + e.message); }
+}
+// Merged view: built-ins (read-only) first, then user dyes (deletable).
+function allDyes() {
+  const builtin = ADC.DYE_LIBRARY.map((d) => Object.assign({ _user: false }, d));
+  const user = userDyes.map((d) => Object.assign({ _user: true }, d));
+  return builtin.concat(user);
+}
+function findDye(name) {
+  const key = (name || "").toLowerCase();
+  return allDyes().find((d) => d.name.toLowerCase() === key) || null;
+}
+
 function renderDyes() {
   const q = ($("dye_q").value || "").toLowerCase();
-  let rows = ADC.DYE_LIBRARY.filter((d) => d.name.toLowerCase().includes(q));
+  let rows = allDyes().filter((d) => d.name.toLowerCase().includes(q));
   rows.sort((a, b) => {
     let va = a[dyeSort.key], vb = b[dyeSort.key];
-    va = va === null ? -Infinity : va; vb = vb === null ? -Infinity : vb;
+    va = va === null || va === undefined ? -Infinity : va;
+    vb = vb === null || vb === undefined ? -Infinity : vb;
     if (typeof va === "string") return dyeSort.dir * va.localeCompare(vb);
     return dyeSort.dir * (va - vb);
   });
   const cols = [["name", "Name", false], ["mw", "MW", true], ["e_lmax", "\u03b5\u03bbmax (M\u207b\u00b9cm\u207b\u00b9)", true],
     ["cf280", "CF@280", true], ["e280", "\u03b5280 (M\u207b\u00b9cm\u207b\u00b9)", true], ["lmax", "\u03bbmax (nm)", true], ["comment", "Note", false]];
-  let html = "<thead><tr>" + cols.map((c) => `<th class="${c[2] ? "num" : ""}" onclick="sortDyes('${c[0]}')">${c[1]}</th>`).join("") + "</tr></thead><tbody>";
+  let html = "<thead><tr>" + cols.map((c) => `<th class="${c[2] ? "num" : ""}" onclick="sortDyes('${c[0]}')">${c[1]}</th>`).join("") + "<th></th></tr></thead><tbody>";
   rows.forEach((d) => {
-    html += `<tr onclick='loadDyeToUV(${JSON.stringify(d)})' title="load into UV/Vis calculator">
-      <td>${d.name}</td><td class="num">${d.mw}</td><td class="num">${d.e_lmax.toLocaleString()}</td>
-      <td class="num">${d.cf280}</td><td class="num">${d.e280.toLocaleString()}</td>
-      <td class="num">${d.lmax ?? "&mdash;"}</td><td>${d.comment ?? ""}</td></tr>`;
+    const tag = d._user ? ' <span class="tag-user">yours</span>' : "";
+    const del = d._user ? `<button class="dye-del" title="delete this dye" onclick='event.stopPropagation();deleteUserDye(${JSON.stringify(d.name)})'>&times;</button>` : "";
+    html += `<tr class="${d._user ? "userdye" : ""}" onclick='loadDyeToUV(${JSON.stringify(d)})' title="load into UV/Vis calculator">
+      <td>${d.name}${tag}</td><td class="num">${d.mw}</td><td class="num">${(d.e_lmax ?? 0).toLocaleString()}</td>
+      <td class="num">${d.cf280}</td><td class="num">${(d.e280 ?? 0).toLocaleString()}</td>
+      <td class="num">${d.lmax ?? "&mdash;"}</td><td>${d.comment ?? ""}</td><td class="num">${del}</td></tr>`;
   });
   $("dye_table").innerHTML = html + "</tbody>";
 }
@@ -928,11 +1043,100 @@ function loadDyeToUV(d) {
 }
 function populateDyeSelect() {
   const sel = $("uv_dyesel");
-  ADC.DYE_LIBRARY.forEach((d) => {
-    const o = document.createElement("option"); o.value = d.name; o.textContent = `${d.name} (\u03bbmax ${d.lmax ?? "?"})`;
+  // Keep the first (placeholder) option; rebuild the rest from the merged list.
+  while (sel.options.length > 1) sel.remove(1);
+  allDyes().forEach((d) => {
+    const o = document.createElement("option"); o.value = d.name;
+    o.textContent = `${d.name}${d._user ? " \u2605" : ""} (\u03bbmax ${d.lmax ?? "?"})`;
     sel.appendChild(o);
   });
-  sel.onchange = () => { const d = ADC.getDye(sel.value); if (d) { $("uv_mwlp").value = d.mw; $("uv_e280lp").value = d.e280; $("uv_elmaxlp").value = d.e_lmax; calcUV(); } };
+  sel.onchange = () => { const d = findDye(sel.value); if (d) { $("uv_mwlp").value = d.mw; $("uv_e280lp").value = d.e280; $("uv_elmaxlp").value = d.e_lmax; calcUV(); } };
+}
+function deleteUserDye(name) {
+  userDyes = userDyes.filter((d) => d.name.toLowerCase() !== (name || "").toLowerCase());
+  persistUserDyes(); renderDyes(); populateDyeSelect();
+}
+
+// ── Extinction-coefficient calculator ───────────────────────────────────────
+// All numeric work delegates to ADC.extinctionCoefficient. This handler only
+// reads rows, scales concentrations by the unit factor, and formats output.
+let ecRows = [{ c: "", a280: "", almax: "" }, { c: "", a280: "", almax: "" }, { c: "", a280: "", almax: "" }];
+let ecLastFit = null;   // {eps280, epslmax, r280, rlmax}
+function renderEcRows() {
+  $("ec_rows").innerHTML = ecRows.map((r, i) => `
+    <div class="speciesrow" style="grid-template-columns:1fr 1fr 1fr 34px">
+      <input type="number" value="${r.c}" placeholder="conc" oninput="ecRows[${i}].c=this.value">
+      <input type="number" value="${r.a280}" placeholder="A280" oninput="ecRows[${i}].a280=this.value">
+      <input type="number" value="${r.almax}" placeholder="A\u03bbmax" oninput="ecRows[${i}].almax=this.value">
+      <button title="remove" onclick="removeEcRow(${i})">&times;</button>
+    </div>`).join("");
+}
+function addEcRow() { ecRows.push({ c: "", a280: "", almax: "" }); renderEcRows(); }
+function removeEcRow(i) { ecRows.splice(i, 1); if (ecRows.length < 2) ecRows.push({ c: "", a280: "", almax: "" }); renderEcRows(); }
+function calcEC() {
+  const factor = parseFloat($("ec_unit").value);
+  const path = parseFloat($("ec_path").value) || 1;
+  const conc = [], a280 = [], almax = [];
+  ecRows.forEach((r) => {
+    const c = parseFloat(r.c);
+    if (!Number.isFinite(c)) return;
+    const cM = c * factor;
+    if (Number.isFinite(parseFloat(r.a280))) { conc.push(cM); a280.push(parseFloat(r.a280)); }
+  });
+  // Aλmax uses its own paired list so blank λmax rows don't break the A280 fit.
+  const concL = [], almaxV = [];
+  ecRows.forEach((r) => {
+    const c = parseFloat(r.c);
+    if (Number.isFinite(c) && Number.isFinite(parseFloat(r.almax))) { concL.push(c * factor); almaxV.push(parseFloat(r.almax)); }
+  });
+  let html = "", fit = { eps280: null, epslmax: null, r280: null, rlmax: null };
+  try {
+    if (conc.length >= 2) {
+      const ec = ADC.extinctionCoefficient(conc, a280, path);
+      fit.eps280 = ec.eps; fit.r280 = ec.rSquared;
+      html += rrow("&epsilon;280", Math.round(ec.eps).toLocaleString() + " M\u207b\u00b9cm\u207b\u00b9", "primary");
+      html += rrow("R\u00b2 (280 nm)", fmt(ec.rSquared, 5));
+      html += rrow("slope / intercept", `${fmt(ec.slope, 1)} / ${fmt(ec.intercept, 4)}`);
+    }
+    if (concL.length >= 2) {
+      const ecL = ADC.extinctionCoefficient(concL, almaxV, path);
+      fit.epslmax = ecL.eps; fit.rlmax = ecL.rSquared;
+      html += rrow("&epsilon;&lambda;max", Math.round(ecL.eps).toLocaleString() + " M\u207b\u00b9cm\u207b\u00b9", fit.eps280 === null ? "primary" : "");
+      html += rrow("R\u00b2 (\u03bbmax)", fmt(ecL.rSquared, 5));
+      if (fit.eps280 !== null && ecL.eps) html += rrow("CF@280 (&epsilon;280/&epsilon;&lambda;max)", fmt(fit.eps280 / ecL.eps, 3));
+    }
+    if (!html) { $("ec_results").innerHTML = placeholder("Enter at least 2 points with a concentration and A280"); ecLastFit = null; return; }
+    ecLastFit = fit;
+    $("ec_results").innerHTML = html;
+  } catch (e) { $("ec_results").innerHTML = placeholder(e.message); ecLastFit = null; }
+}
+function fillFromEC() {
+  if (!ecLastFit || (ecLastFit.eps280 === null && ecLastFit.epslmax === null)) { $("nd_msg").textContent = "Run Compute \u03b5 first."; return; }
+  if (ecLastFit.eps280 !== null) $("nd_e280").value = Math.round(ecLastFit.eps280);
+  if (ecLastFit.epslmax !== null) $("nd_elmax").value = Math.round(ecLastFit.epslmax);
+  if ($("ec_lmax").value) $("nd_lmax").value = $("ec_lmax").value;
+  updateCF(); $("nd_msg").textContent = "Filled \u03b5 values from the calculator.";
+}
+function updateCF() {
+  const e280 = parseFloat($("nd_e280").value), elmax = parseFloat($("nd_elmax").value);
+  $("nd_cf280").value = (Number.isFinite(e280) && Number.isFinite(elmax) && elmax) ? (e280 / elmax).toFixed(3) : "";
+}
+function addUserDye() {
+  const name = ($("nd_name").value || "").trim();
+  const mw = parseFloat($("nd_mw").value);
+  const elmax = parseFloat($("nd_elmax").value);
+  const e280 = parseFloat($("nd_e280").value);
+  const lmax = parseFloat($("nd_lmax").value);
+  if (!name) { $("nd_msg").textContent = "Name is required."; return; }
+  if (findDye(name)) { $("nd_msg").textContent = `A dye named "${name}" already exists.`; return; }
+  if (!Number.isFinite(mw) || !Number.isFinite(elmax) || !Number.isFinite(e280)) {
+    $("nd_msg").textContent = "MW, \u03b5\u03bbmax and \u03b5280 are required numbers."; return;
+  }
+  const dye = { name, mw, e_lmax: elmax, cf280: elmax ? +(e280 / elmax).toFixed(4) : 0,
+    e280, lmax: Number.isFinite(lmax) ? lmax : null, comment: ($("nd_comment").value || "").trim() };
+  userDyes.push(dye); persistUserDyes(); renderDyes(); populateDyeSelect();
+  ["nd_name", "nd_mw", "nd_lmax", "nd_elmax", "nd_e280", "nd_cf280", "nd_comment"].forEach((id) => ($(id).value = ""));
+  $("nd_msg").textContent = `Added "${name}" \u2014 it now appears in the table and the UV/Vis selector.`;
 }
 
 // ================= ADC Registry (UI) =================
@@ -1057,29 +1261,6 @@ function exportRegistryCsv() {
   if (!registry.length) { alert("Registry is empty."); return; }
   downloadBlob(ADC.registryToCsv(registry), `adc_registry_${stamp()}.csv`, "text/csv");
 }
-function exportRegistryJson() {
-  if (!registry.length) { alert("Registry is empty."); return; }
-  downloadBlob(JSON.stringify(registry, null, 2), `adc_registry_${stamp()}.json`, "application/json");
-}
-function importRegistryJson(input) {
-  const file = input.files[0]; if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      if (!Array.isArray(data)) throw new Error("file is not a JSON array of records");
-      const cleaned = data.map((d) => ADC.makeRegistryRecord(d));
-      const mode = registry.length
-        ? (confirm(`Import ${cleaned.length} records.\nOK = merge with existing ${registry.length}, Cancel = replace all.`) ? "merge" : "replace")
-        : "merge";
-      registry = mode === "merge" ? registry.concat(cleaned) : cleaned;
-      persistRegistry(); renderRegistry();
-      alert(`Imported ${cleaned.length} records (${mode}).`);
-    } catch (e) { alert("Import failed: " + e.message); }
-    input.value = "";
-  };
-  reader.readAsText(file);
-}
 
 // ================= Init =================
 function initBindings() {
@@ -1087,8 +1268,10 @@ function initBindings() {
   document.querySelectorAll("#panel-ellman input").forEach((el) => (el.oninput = calcEllman));
   document.querySelectorAll("#panel-yield input").forEach((el) => (el.oninput = calcYield));
   $("cj_route").onchange = () => conjPreset($("cj_route").value);
+  $("nd_e280").oninput = updateCF; $("nd_elmax").oninput = updateCF;
 }
 window.addEventListener("DOMContentLoaded", () => {
+  loadUserDyes();
   populateDyeSelect();
   initBindings();
   conjPreset("thiomab");
@@ -1096,6 +1279,8 @@ window.addEventListener("DOMContentLoaded", () => {
   setLcmsMode("reduced");
   setDarMethod("uv");
   renderDyes();
+  renderEcRows();
+  $("ec_results").innerHTML = placeholder("Enter a dilution series and press Compute \u03b5");
   calcUV(); calcEllman(); calcYield();
   loadRegistry(); renderRegistry();
   try { $("reg_date").value = new Date().toISOString().slice(0, 10); } catch (e) {}
