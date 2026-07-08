@@ -1361,13 +1361,19 @@ const AB_CELLS = (() => {
   return out;
 })();
 
-// DAR-2 payloads: one stylised star flanking each side of the antibody, sitting
-// just below the Fab arms at the hinge (where the two arms converge into the Y
-// stem). The mask body at row 4 spans cols 3–12, so cols 1 and 14 are clear
-// slots one column out from the neck — the drugs read as conjugated to the Fab
-// region without overlapping the silhouette.
+// DAR-2 payloads: a little CLUSTER of stars conjugated to each Fab, nestled in
+// the void pockets that flank the neck where the two arms converge into the Y
+// stem (rows 4–6). Each cluster is one "drug" (group id g) so the 3–4 stars
+// twinkle together as a unit. Cells are chosen to hug the silhouette from the
+// left/right without overlapping it — and pulled inward from the far edges so
+// they read as attached to the arms rather than floating off to the sides.
 const AB_PAYLOAD_GLYPH = "\u2726";                    // ✦ four-pointed star
-const AB_PAYLOADS = [{ r: 4, c: 1 }, { r: 4, c: 14 }];
+const AB_PAYLOADS = [
+  // left drug — cluster of 4 hugging the left of the neck
+  { r: 4, c: 1, g: 0 }, { r: 5, c: 0, g: 0 }, { r: 5, c: 1, g: 0 }, { r: 6, c: 1, g: 0 },
+  // right drug — cluster of 4, pulled in from the far edge (was col 14)
+  { r: 4, c: 13, g: 1 }, { r: 5, c: 12, g: 1 }, { r: 5, c: 13, g: 1 }, { r: 6, c: 12, g: 1 },
+];
 
 // Regular staggered lattice: molecules sit on a grid with spacing wider than the
 // silhouette, so they never overlap and stay evenly spaced. The whole lattice
@@ -1466,8 +1472,10 @@ function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
     // phase with the body shimmer so they read as attached drugs, not silhouette.
     for (let pi = 0; pi < AB_PAYLOADS.length; pi++) {
       const p = AB_PAYLOADS[pi];
-      const tw = Math.sin(t * 2.4 + a.phase + pi * 1.7);             // -1..1 twinkle
-      put(bx + p.c, by + p.r, AB_PAYLOAD_GLYPH, tw > -0.55 ? "P" : "p");
+      // per-star twinkle, offset within the cluster by its position so the
+      // group shimmers as a loose unit rather than a single blinking blob.
+      const tw = Math.sin(t * 2.4 + a.phase + p.g * 1.9 + (p.r + p.c) * 0.5);
+      put(bx + p.c, by + p.r, AB_PAYLOAD_GLYPH, tw > -0.4 ? "P" : "p");
     }
   }
   return g;
