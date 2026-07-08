@@ -3,17 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Antibody–drug conjugate design calculator: DAR determination, conjugation planning, yield/formulation, and an in vitro dosing plate designer — all from one tested calculation core.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#16181c" media="(prefers-color-scheme: dark)">
 <title>ADC Calculator</title>
 <style>
 :root{
+  color-scheme:light dark;
   --bg:#fafafa; --panel:#ffffff; --ink:#1a1d21; --muted:#66707b; --faint:#9aa1ab;
-  --line:#e7e9ec; --field:#f6f7f8; --result:#f6f7f8;
-  --accent:#AB3635; --accent-soft:#f7ebeb; --accent-hover:#8f2b2a;
-  --warn:#9a5b00; --danger:#b3261e; --danger-soft:#fbecea;
+  --line:#e7e9ec; --field:#f6f7f8; --result:#f6f7f8; --well:#fbfcfd;
+  --accent:#AB3635; --accent-soft:#f7ebeb; --accent-line:#eed6d6; --accent-hover:#8f2b2a; --on-accent:#ffffff;
+  --warn:#9a5b00; --danger:#b3261e; --danger-soft:#fbecea; --ok:#2b7a78;
+  --empty-hatch:rgba(0,0,0,.03);
   --mono:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace;
   --s1:8px; --s2:16px; --s3:24px; --s4:32px;
 }
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#16181c; --panel:#1e2127; --ink:#e8eaed; --muted:#9aa2ad; --faint:#6b7480;
+    --line:#2c313a; --field:#23272e; --result:#23272e; --well:#1a1d22;
+    --accent:#e8615f; --accent-soft:#3a2422; --accent-line:#4a2c2a; --accent-hover:#f07c7a; --on-accent:#1a1d21;
+    --warn:#e0a244; --danger:#f0736c; --danger-soft:#3a2320; --ok:#5cc0bc;
+    --empty-hatch:rgba(255,255,255,.04);
+  }
+}
 *{box-sizing:border-box}
+/* keyboard-visible focus ring (does not fire on mouse click) */
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+button:focus-visible,.segmented button:focus-visible,nav.tabs button:focus-visible{outline-offset:-2px}
+input:focus-visible,select:focus-visible{outline:none}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important;scroll-behavior:auto !important}
+}
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:var(--bg);color:var(--ink);font-size:13.5px;line-height:1.55;-webkit-font-smoothing:antialiased}
 header{background:var(--panel);border-bottom:1px solid var(--line);padding:22px 0}
@@ -23,10 +45,17 @@ header p{margin:5px 0 0;font-size:12.5px;color:var(--muted);max-width:76ch}
 .wrap{max-width:1140px;margin:0 auto;padding:0 var(--s3)}
 nav.tabs{display:flex;flex-wrap:wrap;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);
   position:sticky;top:0;z-index:20}
-nav.tabs button{background:none;border:none;padding:13px 15px;font-size:13px;cursor:pointer;color:var(--muted);
+nav.tabs button{background:none;border:none;padding:13px 12px;font-size:13px;cursor:pointer;color:var(--muted);
   border-bottom:2px solid transparent;font-weight:500;white-space:nowrap;transition:color .12s}
 nav.tabs button:hover{color:var(--ink)}
 nav.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+/* Visual break between the analytical calculators and the bench-planning tool. */
+nav.tabs .tab-div{align-self:center;width:1px;height:22px;background:var(--line);margin:0 8px 0 auto}
+svg.ic{width:1em;height:1em;flex:none;vertical-align:-0.14em;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+button svg.ic{margin-right:.4em}
+nav.tabs button.bench{color:var(--ink);font-weight:600;display:inline-flex;align-items:center;gap:.4em}
+nav.tabs button.bench.active{color:var(--accent);border-bottom-color:var(--accent)}
+@media(max-width:640px){nav.tabs .tab-div{display:none}}
 main{padding:var(--s3) 0 64px}
 .panel{display:none}
 .panel.active{display:block}
@@ -54,7 +83,8 @@ label.field{display:block;margin-bottom:var(--s2)}
 label.field span{display:block;font-size:12px;color:var(--muted);margin-bottom:5px;font-weight:500}
 label.field .unit{color:var(--faint);font-weight:400}
 input,select{width:100%;padding:8px 11px;border:1px solid var(--line);border-radius:8px;font-size:13px;
-  font-family:var(--mono);background:var(--panel);color:var(--ink);transition:border-color .12s,box-shadow .12s}
+  font-family:inherit;background:var(--panel);color:var(--ink);transition:border-color .12s,box-shadow .12s}
+input[type=number],input[type=date]{font-family:var(--mono);font-size:12.5px}
 input:focus,select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
 input[readonly]{background:var(--result);color:var(--faint);cursor:default;border-style:dashed}
 select{font-family:inherit}
@@ -84,12 +114,15 @@ details.advanced[open]>summary{border-bottom:1px solid var(--line)}
 .note b{color:var(--ink);font-weight:600}
 .note ul{margin:6px 0 0;padding-left:18px}.note li{margin:3px 0}
 .btnrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-top:var(--s1)}
-button.act{background:var(--accent);color:#fff;border:none;padding:9px 17px;border-radius:8px;cursor:pointer;
+button.act{background:var(--accent);color:var(--on-accent);border:none;padding:9px 17px;border-radius:8px;cursor:pointer;
   font-size:13px;font-weight:500;transition:background .12s}
 button.act:hover{background:var(--accent-hover)}
 button.ghost{background:var(--panel);color:var(--accent);border:1px solid var(--line);padding:8px 15px;border-radius:8px;
   cursor:pointer;font-size:12.5px;font-weight:500;transition:border-color .12s,background .12s}
 button.ghost:hover{border-color:var(--accent);background:var(--accent-soft)}
+button.subtle{background:none;color:var(--muted);border:1px solid var(--line);padding:7px 13px;border-radius:8px;
+  cursor:pointer;font-size:12.5px;font-weight:500;transition:color .12s,border-color .12s,background .12s}
+button.subtle:hover{color:var(--danger);border-color:var(--danger);background:var(--danger-soft)}
 /* log-to-registry as an inline text action */
 .logbtn{margin-top:var(--s1)}
 .logbtn button.ghost{background:none;border:none;color:var(--accent);padding:10px 0 0;font-size:12.5px;font-weight:500}
@@ -116,6 +149,16 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
 .tag{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid transparent;border-radius:20px;padding:2px 11px;
   font-size:11.5px;margin:2px 4px 2px 0;font-family:var(--mono)}
 .footer{color:var(--faint);font-size:11.5px;text-align:center;padding:var(--s3)}
+#ab_art{display:block;margin:24px auto 0;max-width:100%;overflow:hidden;
+  font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  font-size:11px;line-height:12px;letter-spacing:0;white-space:pre;
+  color:var(--faint);opacity:.55;user-select:none;-webkit-user-select:none;
+  cursor:crosshair;touch-action:none;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 12%,#000 88%,transparent);
+  mask-image:linear-gradient(to right,transparent,#000 12%,#000 88%,transparent)}
+#ab_art b{color:var(--accent-hover);font-weight:600;opacity:.95}
+#ab_art i{color:var(--accent);font-style:normal;font-weight:500;opacity:.62}
+@media (max-width:640px){#ab_art{display:none}}
 .sub{font-size:11.5px;color:var(--faint);margin-top:2px}
 .regbox{background:var(--result);border:1px solid var(--line);border-radius:12px;padding:17px 19px}
 .regbox .sub{margin-bottom:var(--s1)}
@@ -125,6 +168,9 @@ button.danger:hover{border-color:var(--danger);background:var(--danger-soft)}
 #reg_summary_body .rrow .k{color:var(--muted)}
 #reg_summary_body .rrow .v{font-family:var(--mono);color:var(--ink)}
 table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:pointer;font-size:15px;padding:0 4px}
+@keyframes ds-row-flash{0%{background:var(--accent-soft)}100%{background:transparent}}
+table.dye tr.just-added>td{animation:ds-row-flash 1.5s ease-out}
+table.dye tr.just-added>td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 #reg_table th{position:static;cursor:default}
 .pillrow{display:flex;gap:var(--s1);flex-wrap:wrap;margin-bottom:var(--s2)}
 .pillrow button{font-size:12.5px;padding:6px 13px;border-radius:20px;border:1px solid var(--line);background:var(--panel);
@@ -133,10 +179,10 @@ table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:poin
 .mstatus{font-size:11.5px;font-family:var(--mono);color:var(--accent);margin-top:var(--s1)}
 .reagent-add{background:var(--result);border:1px solid var(--line);border-radius:9px;padding:14px;margin-bottom:11px}
 /* workflow strip - connects steps */
-.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid #eed6d6;
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;background:var(--accent-soft);border:1px solid var(--accent-line);
   border-radius:9px;padding:10px 14px;margin-bottom:var(--s2);font-size:12px;color:var(--ink)}
 .flow .step{display:inline-flex;align-items:center;gap:6px;font-weight:500}
-.flow .step b{background:var(--accent);color:#fff;width:18px;height:18px;border-radius:50%;display:inline-flex;
+.flow .step b{background:var(--accent);color:var(--on-accent);width:18px;height:18px;border-radius:50%;display:inline-flex;
   align-items:center;justify-content:center;font-size:11px;font-weight:600}
 .flow .arrow{color:var(--accent);font-weight:600}
 /* glossary */
@@ -164,16 +210,34 @@ table.dye td .delrow{background:none;border:none;color:var(--danger);cursor:poin
 .adcbar .hint{font-size:11px;color:var(--faint);flex-basis:100%;margin-top:-2px}
 table.dye td.editable-id{cursor:text;position:relative}
 table.dye td.editable-id:hover{background:var(--accent-soft);outline:1px dashed var(--accent)}
-table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--faint);margin-left:6px;opacity:.5}
+table.plate{border-collapse:collapse;font-size:10.5px;margin-top:6px}
+table.plate th{background:var(--panel);color:var(--muted);font-weight:600;padding:2px 5px;text-align:center;font-size:10px}
+table.plate td{border:1px solid var(--line);width:42px;height:34px;text-align:center;padding:1px;vertical-align:middle;font-family:var(--mono)}
+table.plate td.empty{background:repeating-linear-gradient(45deg,transparent,transparent 4px,var(--empty-hatch) 4px,var(--empty-hatch) 8px)}
+table.plate td .pc{font-weight:600;line-height:1.1;color:inherit}
+table.plate td .pr{font-size:9px;line-height:1.1;opacity:.85}
+table.plate td.well{cursor:crosshair;background:var(--well);user-select:none;transition:background .05s}
+table.plate td.well:hover{background:var(--accent-soft)}
+table.plate td.well.pending{background:var(--accent);color:var(--on-accent);outline:2px solid var(--ink);outline-offset:-2px}
+table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint);margin-left:6px;opacity:.5}
 </style>
 </head>
 <body>
+<!-- Inline icon sprite: stroke-based, inherit currentColor, no font dependency -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false"><defs>
+  <symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.6" r="1" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="ic-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v6.5L5.2 18a2 2 0 0 0 1.8 3h10a2 2 0 0 0 1.8-3L14 9.5V3"/><line x1="7.5" y1="14" x2="16.5" y2="14"/></symbol>
+  <symbol id="ic-log" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="12" y1="13" x2="12" y2="17"/><line x1="10" y1="15" x2="14" y2="15"/></symbol>
+  <symbol id="ic-print" viewBox="0 0 24 24"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></symbol>
+  <symbol id="ic-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+</defs></svg>
 <header><div class="wrap" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
 <div><h1>ADC Calculator</h1>
 <p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
-<button class="info-link" onclick="document.querySelector('#tabs button[data-tab=&quot;definitions&quot;]').click()" style="flex:none;white-space:nowrap">&#9432; Definitions</button>
+<button class="info-link" onclick="document.querySelector('#tabs button[data-tab=&quot;definitions&quot;]').click()" style="flex:none;white-space:nowrap;display:inline-flex;align-items:center;gap:.4em"><svg class="ic"><use href="#ic-info"/></svg>Definitions</button>
 </div></header>
-<nav class="tabs wrap" id="tabs">
+<nav class="tabs wrap" id="tabs" role="tablist" aria-label="Calculator sections">
   <button data-tab="dar" class="active">DAR</button>
   <button data-tab="conj">Conjugation Designer</button>
   <button data-tab="ellman">Ellman (free thiols)</button>
@@ -181,6 +245,8 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
   <button data-tab="dyes">Dye / Payload Library</button>
   <button data-tab="registry">ADC Registry</button>
   <button data-tab="definitions">Definitions</button>
+  <span class="tab-div" aria-hidden="true"></span>
+  <button data-tab="dosing" class="bench" title="Plan an in vitro dosing experiment"><svg class="ic"><use href="#ic-flask"/></svg>In Vitro Dosing</button>
 </nav>
 <main class="wrap">
 
@@ -190,7 +256,7 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
   <div class="fld"><label for="adc_id">ID</label><input id="adc_id" placeholder="ADC-001"></div>
   <div class="fld"><label for="adc_operator">Operator</label><input id="adc_operator" placeholder="initials"></div>
   <div class="fld"><label for="adc_date">Date</label><input id="adc_date" type="date"></div>
-  <div class="fld" style="flex:1"><label for="adc_notes">Notes</label><input id="adc_notes" placeholder="lot, buffer, comments\u2026"></div>
+  <div class="fld" style="flex:1"><label for="adc_notes">Notes</label><input id="adc_notes" placeholder="lot, buffer, comments&hellip;"></div>
   <span class="hint">These travel with you &mdash; whatever is set here is attached to the next result you log, from any tab. Blank ID auto-numbers.</span>
 </div>
 
@@ -244,7 +310,7 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
         </div>
         <div>
           <div class="results" id="uv_out"></div>
-          <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('uv')">&#8862; Log to registry</button><span class="sub" id="log_uv_msg" style="align-self:center"></span></div>
+          <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('uv')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_uv_msg" style="align-self:center"></span></div>
         </div>
       </div>
     </div>
@@ -258,7 +324,7 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
           <div id="hic_rows"></div>
           <div class="btnrow"><button class="ghost" onclick="addHicRow()">+ Add species</button></div>
         </div>
-        <div><div class="results" id="hic_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('hic')">&#8862; Log to registry</button><span class="sub" id="log_hic_msg" style="align-self:center"></span></div></div>
+        <div><div class="results" id="hic_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('hic')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_hic_msg" style="align-self:center"></span></div></div>
       </div>
     </div>
 
@@ -271,7 +337,7 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
       </div>
       <div class="split">
         <div id="lcms_inputs"></div>
-        <div><div class="results" id="lcms_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('lcms')">&#8862; Log to registry</button><span class="sub" id="log_lcms_msg" style="align-self:center"></span></div></div>
+        <div><div class="results" id="lcms_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('lcms')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_lcms_msg" style="align-self:center"></span></div></div>
       </div>
     </div>
   </div>
@@ -310,7 +376,7 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
       </div>
       <div>
         <div class="results" id="cj_out"></div>
-        <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('conj')">&#8862; Log to registry</button><span class="sub" id="log_conj_msg" style="align-self:center"></span></div>
+        <div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('conj')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_conj_msg" style="align-self:center"></span></div>
         <div class="note" id="cj_notes"></div>
       </div>
     </div>
@@ -330,7 +396,7 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
         <label class="field"><span>&epsilon;280 antibody <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e280" type="number" value="203000"></label>
         <label class="field"><span>&epsilon;412 TNB <span class="unit">(M&middot;cm)&#8315;&#185;</span></span><input id="el_e412" type="number" value="14150"></label>
       </div></div>
-      <div><div class="results" id="el_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('ellman')">&#8862; Log to registry</button><span class="sub" id="log_ellman_msg" style="align-self:center"></span></div></div>
+      <div><div class="results" id="el_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('ellman')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_ellman_msg" style="align-self:center"></span></div></div>
     </div>
   </div>
 </section>
@@ -351,7 +417,97 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
         <label class="field"><span>Starting mass <span class="unit">(mg, optional)</span></span><input id="yl_start" type="number" step="0.1" value="15"></label>
         <label class="field"><span>Target [ADC] <span class="unit">(mg/mL, optional)</span></span><input id="yl_target" type="number" step="0.1" value="10"></label>
       </div></div>
-      <div><div class="results" id="yl_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('yield')">&#8862; Log to registry</button><span class="sub" id="log_yield_msg" style="align-self:center"></span></div></div>
+      <div><div class="results" id="yl_out"></div><div class="btnrow logbtn"><button class="ghost" onclick="logToRegistry('yield')"><svg class="ic"><use href="#ic-log"/></svg>Log to registry</button><span class="sub" id="log_yield_msg" style="align-self:center"></span></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ In Vitro Dosing ============ -->
+<section class="panel" id="panel-dosing">
+  <div class="card">
+    <h2>In Vitro Dosing &mdash; Plate Designer</h2>
+    <p class="desc">Lay out a dosing experiment by <b>painting the plate first</b>. Pick a format and orientation, drag to select a block of wells, then name the group and enter its cell line and ADC dosing settings. The <b>shape of the selection drives the design</b>: along the dose axis each well is one concentration point (dose decreasing), across the other axis wells are replicates &mdash; and the well count sets the volumes. Add several groups (different cell lines or ADCs) to one plate; the combined serial-dilution recipe is computed below.</p>
+    <div class="formula">C_final,i = C_top / fold^i &nbsp;&middot;&nbsp; spike V_add = V_well/(f&minus;1), working = f&times;final &nbsp;&middot;&nbsp; V_transfer = V_dispense/(fold&minus;1)</div>
+
+    <div class="grid" style="margin-bottom:10px">
+      <label class="field"><span>Plate type</span>
+        <select id="ds_plate">
+          <option value="6">6-well</option>
+          <option value="12">12-well</option>
+          <option value="24">24-well</option>
+          <option value="48">48-well</option>
+          <option value="96" selected>96-well</option>
+          <option value="384">384-well</option>
+          <option value="1536">1536-well</option>
+        </select>
+      </label>
+      <label class="field"><span>Dose gradient</span>
+        <select id="ds_orient">
+          <option value="by_row" selected>Decreasing down rows (top&rarr;bottom)</option>
+          <option value="by_column">Decreasing across columns (left&rarr;right)</option>
+        </select>
+      </label>
+      <label class="field"><span>Dose units</span>
+        <select id="ds_unit">
+          <option value="uM">&micro;M</option>
+          <option value="nM" selected>nM</option>
+          <option value="pM">pM</option>
+        </select>
+      </label>
+      <label class="field"><span>Well volume <span class="unit">(&micro;L)</span></span><input id="ds_well" type="number" step="1" value="100"></label>
+    </div>
+
+    <p class="sub" id="ds_paint_hint">Drag across wells to select a block for a new group.</p>
+    <div id="ds_grid" style="overflow:auto;max-height:460px;touch-action:none"></div>
+
+    <!-- Group editor: appears when a block is selected -->
+    <div id="ds_group_form" class="card" style="margin-top:12px;display:none">
+      <h3><span id="ds_form_title">New dose group</span> <span class="sub" id="ds_sel_geo"></span></h3>
+      <div class="grid">
+        <label class="field"><span>Group / label</span><input id="ds_g_name" type="text" placeholder="e.g. Group A"></label>
+        <label class="field"><span>Cell line</span><input id="ds_g_cell" type="text" placeholder="e.g. SK-BR-3"></label>
+        <label class="field"><span>ADC name</span><input id="ds_g_adc" type="text" placeholder="e.g. T-DM1"></label>
+        <label class="field"><span>ADC stock <span class="unit">(&micro;M)</span></span><input id="ds_g_stock" type="number" step="1" value="1000"></label>
+        <label class="field"><span>Top concentration <span class="unit" id="ds_g_top_unit">(nM)</span></span><input id="ds_g_top" type="number" step="1" value="1000"></label>
+        <label class="field"><span>Fold-dilution</span><input id="ds_g_fold" type="number" step="0.5" value="3"></label>
+        <label class="field"><span>Dosing mode</span>
+          <select id="ds_g_mode">
+            <option value="spike" selected>Spike onto medium</option>
+            <option value="replace">Replace medium</option>
+          </select>
+        </label>
+        <label class="field" id="ds_g_factor_field"><span>Spike factor <span class="unit">(&times; final)</span></span><input id="ds_g_factor" type="number" step="1" value="10"></label>
+        <label class="field"><span>Overage <span class="unit">(&times;, dead vol)</span></span><input id="ds_g_overage" type="number" step="0.05" value="1.1"></label>
+      </div>
+      <div class="btnrow" style="margin-top:8px">
+        <button class="act" id="ds_commit_btn" onclick="commitDoseGroup()"><svg class="ic"><use href="#ic-check"/></svg>Add group</button>
+        <button class="ghost" onclick="clearDosePending()">Cancel selection</button>
+      </div>
+    </div>
+
+    <div id="ds_groups"></div>
+    <div class="results" id="ds_out"></div>
+    <div id="ds_table_wrap"></div>
+    <div class="btnrow" id="ds_export_row" style="margin-top:8px;display:none;flex-wrap:wrap;gap:6px;align-items:center">
+      <button class="act" onclick="printBenchSheet()"><svg class="ic"><use href="#ic-print"/></svg>Print / Save as PDF</button>
+      <button class="ghost" onclick="exportPlateMapCsv()"><svg class="ic"><use href="#ic-log"/></svg>Export plate map CSV</button>
+      <button class="ghost" onclick="exportPlateDesign()">&#8595; Export design (JSON)</button>
+    </div>
+
+    <!-- Saved designs: name + persist/recall to browser storage -->
+    <div class="card" id="ds_saved" style="margin-top:12px">
+      <h3>Saved plate designs</h3>
+      <div class="btnrow" style="flex-wrap:wrap;gap:6px;align-items:center">
+        <input id="ds_design_name" type="text" placeholder="Design name" style="min-width:160px">
+        <button class="act" onclick="savePlateDesign()"><svg class="ic"><use href="#ic-save"/></svg>Save</button>
+        <select id="ds_design_list" style="min-width:160px"></select>
+        <button class="ghost" onclick="loadSavedDesign()">Load</button>
+        <button class="delrow" title="Delete saved design" onclick="deleteSavedDesign()">&times;</button>
+        <span style="flex:1"></span>
+        <button class="ghost" onclick="$('ds_import_file').click()">&#8593; Import JSON</button>
+        <input id="ds_import_file" type="file" accept="application/json,.json" style="display:none">
+      </div>
+      <p class="sub" id="ds_saved_hint" style="margin-top:6px">Designs are stored in this browser. Export JSON to move a design between machines.</p>
     </div>
   </div>
 </section>
@@ -422,13 +578,13 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
   <div class="flow">
     <span class="step"><b>1</b> Compute a result on any panel</span>
     <span class="arrow">&rarr;</span>
-    <span class="step"><b>2</b> Log to registry &#8862;</span>
+    <span class="step"><b>2</b> Log to registry <svg class="ic"><use href="#ic-log"/></svg></span>
     <span class="arrow">&rarr;</span>
     <span class="step"><b>3</b> Export CSV for the batch record</span>
   </div>
   <div class="card">
     <h2>ADC Registry</h2>
-    <p class="desc">A running log of every ADC preparation and assay. Each calculator panel has a <b>&#8862; Log to registry</b> button that captures its current inputs and computed results here. Records are stored in this browser (localStorage) and persist across sessions on this machine. Export to CSV for sharing, backup, or analysis in a spreadsheet.</p>
+    <p class="desc">A running log of every ADC preparation and assay. Each calculator panel has a <b><svg class="ic"><use href="#ic-log"/></svg>Log to registry</b> button that captures its current inputs and computed results here. Records are stored in this browser (localStorage) and persist across sessions on this machine. Export to CSV for sharing, backup, or analysis in a spreadsheet.</p>
 
     <div class="split" style="grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div class="regbox">
@@ -475,6 +631,7 @@ table.dye td.editable-id::after{content:"\\270e";font-size:10px;color:var(--fain
 </section>
 
 </main>
+<pre id="ab_art" aria-hidden="true" title="Drifting IgG antibodies — move your cursor through them"></pre>
 <div class="footer">ADC Calculator &middot; one pure calculation core (Python + JS + this page, kept in lock-step by a shared test suite) &middot; <span id="selfcheck_badge"></span></div>
 
 <script>
@@ -662,6 +819,212 @@ function yieldAndFormulation(concMgml, volumeML, mwAdc,
   if (targetConcMgml) { vFinal = recovered / targetConcMgml; vChange = vFinal - volumeML; }
   return { recoveredMassMg: recovered, yieldPct, molarAmountNmol: molarNmol,
            vFinalML: vFinal, vChangeML: vChange };
+}
+
+// ── 8b. In vitro dosing / serial dilution ───────────────────────────────────
+const PLATE_WELL_VOLUME_UL = {
+  "6": 2000.0, "12": 1000.0, "24": 500.0, "48": 250.0,
+  "96": 100.0, "384": 50.0, "1536": 10.0,
+};
+
+function plateWellVolume(plateType) {
+  const key = String(plateType).trim();
+  if (!(key in PLATE_WELL_VOLUME_UL)) throw new Error(`unknown plate type ${plateType}`);
+  return PLATE_WELL_VOLUME_UL[key];
+}
+
+function planSerialDilution({
+  stockUM, topUM, fold, nPoints, replicates, wellVolumeUL,
+  doseMode = "spike", doseFactor = 10.0, doseVolumeUL = null,
+  overage = 1.1, extraDeadUL = 0.0,
+}) {
+  if (stockUM <= 0) throw new Error("stock concentration must be > 0");
+  if (topUM <= 0) throw new Error("top concentration must be > 0");
+  if (fold <= 1) throw new Error("fold-dilution must be > 1");
+  if (nPoints < 1) throw new Error("need at least 1 concentration point");
+  if (replicates < 1) throw new Error("need at least 1 replicate");
+  if (wellVolumeUL <= 0) throw new Error("well volume must be > 0");
+  if (doseMode !== "spike" && doseMode !== "replace") throw new Error("doseMode must be 'spike' or 'replace'");
+  if (doseMode === "spike" && doseFactor <= 1) throw new Error("doseFactor must be > 1 for spike mode");
+
+  const n = Math.trunc(nPoints);
+  const finalConcs = [];
+  for (let i = 0; i < n; i++) finalConcs.push(topUM / fold ** i);
+  const df = doseMode === "replace" ? 1.0 : Number(doseFactor);
+  const workingConcs = finalConcs.map((c) => c * df);
+
+  let vAdd, finalWellVol;
+  if (doseMode === "replace") { vAdd = wellVolumeUL; finalWellVol = wellVolumeUL; }
+  else {
+    vAdd = doseVolumeUL ? doseVolumeUL : wellVolumeUL / (df - 1.0);
+    finalWellVol = wellVolumeUL + vAdd;
+  }
+
+  const vUse = vAdd * replicates * overage + extraDeadUL;
+  const vXfer = vUse / (fold - 1.0);
+  const vTubeTotal = vUse + vXfer;
+
+  const stockVolTube1 = vTubeTotal * workingConcs[0] / stockUM;
+  const tubes = [];
+  for (let i = 0; i < n; i++) {
+    let source, transferIn, diluent;
+    if (i === 0) { source = "ADC stock"; transferIn = stockVolTube1; diluent = vTubeTotal - stockVolTube1; }
+    else { source = `tube ${i} (transfer)`; transferIn = vXfer; diluent = vUse; }
+    tubes.push({
+      index: i + 1, finalConcUM: finalConcs[i], workingConcUM: workingConcs[i],
+      source, transferInUL: transferIn, diluentUL: diluent,
+      totalUL: transferIn + diluent, dispenseToWellsUL: vUse,
+    });
+  }
+
+  const totalDiluent = tubes.reduce((s, t) => s + t.diluentUL, 0);
+  const warnings = [];
+  if (workingConcs[0] > stockUM) {
+    warnings.push(`Top working conc ${workingConcs[0].toPrecision(4)} \u00b5M exceeds stock `
+      + `${stockUM.toPrecision(4)} \u00b5M \u2014 stock too dilute for this design.`);
+  }
+  if (stockVolTube1 < 1.0) {
+    warnings.push(`Tube-1 stock volume ${stockVolTube1.toPrecision(3)} \u00b5L < 1 \u00b5L \u2014 hard to `
+      + `pipette accurately; use an intermediate dilution or a larger prep volume.`);
+  }
+
+  return {
+    finalConcsUM: finalConcs, workingConcsUM: workingConcs, doseMode, doseFactor: df,
+    vAddPerWellUL: vAdd, finalWellVolumeUL: finalWellVol,
+    vUsePerTubeUL: vUse, vTransferUL: vXfer, vTubeTotalUL: vTubeTotal,
+    tubes, totalStockUL: stockVolTube1, totalDiluentUL: totalDiluent,
+    totalWells: n * replicates, warnings,
+  };
+}
+
+// ── 8c. Plate map ────────────────────────────────────────────────────────────
+const PLATE_GEOMETRY = {
+  "6": [2, 3], "12": [3, 4], "24": [4, 6], "48": [6, 8],
+  "96": [8, 12], "384": [16, 24], "1536": [32, 48],
+};
+
+function rowLabel(i) {
+  let s = ""; i += 1;
+  while (i > 0) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); }
+  return s;
+}
+
+function plateMap(finalConcsUM, replicates, plateType, orientation = "by_column") {
+  const key = String(plateType).trim();
+  if (!(key in PLATE_GEOMETRY)) throw new Error(`unknown plate type ${plateType}`);
+  if (replicates < 1) throw new Error("need at least 1 replicate");
+  const concs = Array.from(finalConcsUM);
+  const n = concs.length;
+  if (n < 1) throw new Error("need at least 1 concentration point");
+
+  const [rows, cols] = PLATE_GEOMETRY[key];
+  const capacity = rows * cols;
+  const used = n * replicates;
+  const warnings = [];
+
+  let orient;
+  if (orientation === "by_column" && n <= cols && replicates <= rows) orient = "by_column";
+  else if (orientation === "by_row" && n <= rows && replicates <= cols) orient = "by_row";
+  else {
+    orient = "sequential";
+    if (orientation === "by_column" || orientation === "by_row") {
+      warnings.push(`${n} points x ${replicates} replicates do not fit the ${rows}x${cols} `
+        + `grid in ${orientation} layout; using sequential fill.`);
+    }
+  }
+
+  const placed = [];
+  if (orient === "by_column") {
+    for (let i = 0; i < n; i++) for (let r = 0; r < replicates; r++) placed.push([r, i, i, r]);
+  } else if (orient === "by_row") {
+    for (let i = 0; i < n; i++) for (let r = 0; r < replicates; r++) placed.push([i, r, i, r]);
+  } else {
+    let pos = 0;
+    for (let i = 0; i < n; i++) for (let r = 0; r < replicates; r++) { placed.push([Math.floor(pos / cols), pos % cols, i, r]); pos++; }
+  }
+
+  if (used > capacity) warnings.push(`${used} wells needed exceeds ${key}-well capacity (${capacity}).`);
+
+  const wells = placed.map(([rr, cc, pi, rep0]) => {
+    const inside = rr < rows && cc < cols;
+    return {
+      row: rr, col: cc, rowLabel: inside ? rowLabel(rr) : null, colLabel: cc + 1,
+      point: pi, replicate: rep0 + 1, finalConcUM: concs[pi], inBounds: inside,
+    };
+  });
+
+  return { plateType: key, rows, cols, orientation: orient, capacity, used, wells, warnings };
+}
+
+function plateMapToCsv(pmap) {
+  const lines = ["well,row,column,point,replicate,final_conc_uM"];
+  for (const w of pmap.wells) {
+    const well = w.rowLabel ? `${w.rowLabel}${w.colLabel}` : "(off-plate)";
+    lines.push(`${well},${w.rowLabel || ""},${w.colLabel},${w.point + 1},`
+      + `${w.replicate},${Number(w.finalConcUM).toPrecision(6)}`);
+  }
+  return lines.join("\n");
+}
+
+// ── 8e. Concentration units + selection-driven dosing ───────────────────────
+const CONC_UNIT_TO_UM = { uM: 1.0, nM: 1e-3, pM: 1e-6 };
+
+function convertConcentration(value, fromUnit, toUnit) {
+  if (!(fromUnit in CONC_UNIT_TO_UM)) throw new Error(`unknown unit ${fromUnit}`);
+  if (!(toUnit in CONC_UNIT_TO_UM)) throw new Error(`unknown unit ${toUnit}`);
+  return value * CONC_UNIT_TO_UM[fromUnit] / CONC_UNIT_TO_UM[toUnit];
+}
+
+function seriesShapeFromSelection(nRows, nCols, orientation = "by_column") {
+  if (nRows < 1 || nCols < 1) throw new Error("selection must be at least 1x1");
+  if (orientation === "by_row") return [nRows, nCols];
+  return [nCols, nRows];
+}
+
+function assignSelection(cells, finalConcsUM, orientation = "by_column") {
+  const seen = new Set();
+  const cleaned = [];
+  for (const [r, c] of cells) {
+    const key = `${r},${c}`;
+    if (!seen.has(key)) { seen.add(key); cleaned.push([Math.trunc(r), Math.trunc(c)]); }
+  }
+  cleaned.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (!cleaned.length) throw new Error("no cells selected");
+  const concs = Array.from(finalConcsUM);
+  const n = concs.length;
+
+  const rows = cleaned.map((x) => x[0]);
+  const cols = cleaned.map((x) => x[1]);
+  const r0 = Math.min(...rows), c0 = Math.min(...cols);
+  const h = Math.max(...rows) - r0 + 1;
+  const w = Math.max(...cols) - c0 + 1;
+  const rectangular = cleaned.length === h * w;
+
+  const doseSpan = orientation === "by_row" ? h : w;
+  const warnings = [];
+  if (n !== doseSpan) {
+    warnings.push(`${n} concentration points but selection spans ${doseSpan} well(s) along the dose axis.`);
+  }
+
+  const wells = cleaned.map(([r, c]) => {
+    let pt, rep;
+    if (orientation === "by_row") { pt = r - r0; rep = c - c0 + 1; }
+    else { pt = c - c0; rep = r - r0 + 1; }
+    const conc = (pt >= 0 && pt < n) ? concs[pt] : null;
+    return { row: r, col: c, point: pt, replicate: rep, finalConcUM: conc };
+  });
+
+  return { wells, rows: h, cols: w, origin: [r0, c0], rectangular, orientation, warnings };
+}
+
+function aggregateDosingPlans(plans) {
+  const arr = Array.from(plans);
+  return {
+    nGroups: arr.length,
+    totalStockUL: arr.reduce((s, p) => s + p.totalStockUL, 0),
+    totalDiluentUL: arr.reduce((s, p) => s + p.totalDiluentUL, 0),
+    totalWells: arr.reduce((s, p) => s + p.totalWells, 0),
+  };
 }
 
 // ── 9b. Extinction-coefficient determination ────────────────────────────────
@@ -861,6 +1224,43 @@ function selfCheck() {
   ok(distributionDispersion({0:5,1:15,2:45,3:25,4:10}).sd,0.9797958971132712,"HIC dispersion sd");
   ok(darLcmsReducedUncertainty({0:10,1:90},{0:5,1:20,2:75}).sigmaDar,0.8944271909999159,"LC-MS reduced sigma");
   results.push("PASS uncertainty (UV / HIC / LC-MS)");
+  const dp = planSerialDilution({ stockUM: 1000, topUM: 10, fold: 4, nPoints: 4,
+    replicates: 3, wellVolumeUL: 100.0, doseMode: "spike", doseFactor: 10.0, overage: 1.0 });
+  ok(dp.finalConcsUM[3], 0.15625, "dosing final conc[3]");
+  ok(dp.workingConcsUM[0], 100.0, "dosing working conc[0]");
+  ok(dp.vAddPerWellUL, 100.0 / 9.0, "dosing spike volume");
+  ok(dp.vUsePerTubeUL, 100.0 / 3.0, "dosing dispense per tube");
+  ok(dp.vTransferUL, 100.0 / 9.0, "dosing transfer volume");
+  ok(dp.totalStockUL, 4.444444444444444, "dosing tube-1 stock");
+  ok(dp.totalWells, 12, "dosing total wells");
+  ok(plateWellVolume("96"), 100.0, "plate 96 well volume");
+  const dpr = planSerialDilution({ stockUM: 500, topUM: 50, fold: 2, nPoints: 6,
+    replicates: 4, wellVolumeUL: 200.0, doseMode: "replace", overage: 1.0 });
+  ok(dpr.workingConcsUM[0], 50.0, "replace working==final");
+  ok(dpr.vAddPerWellUL, 200.0, "replace add == well volume");
+  results.push("PASS in vitro dosing (serial dilution)");
+  const pm = plateMap([10, 3.333, 1.111, 0.37], 3, "96", "by_column");
+  if (pm.orientation !== "by_column" || pm.used !== 12) throw new Error("plate map layout");
+  if (pm.wells[0].rowLabel + pm.wells[0].colLabel !== "A1") throw new Error("plate map A1");
+  if (pm.wells[1].rowLabel + pm.wells[1].colLabel !== "B1") throw new Error("plate map B1 replicate");
+  if (pm.wells[3].rowLabel + pm.wells[3].colLabel !== "A2") throw new Error("plate map A2 next dose");
+  if (rowLabel(26) !== "AA") throw new Error("row label AA");
+  const pmSeq = plateMap([1,2,3,4,5,6,7,8,9,10,11,12,13,14], 3, "96", "by_column");
+  if (pmSeq.orientation !== "sequential" || pmSeq.warnings.length === 0) throw new Error("plate map fallback");
+  results.push("PASS plate map (layout + labels)");
+  if (convertConcentration(5, "uM", "nM") !== 5000) throw new Error("unit uM->nM");
+  if (convertConcentration(250, "nM", "uM") !== 0.25) throw new Error("unit nM->uM");
+  const [ssp, ssr] = seriesShapeFromSelection(3, 4, "by_row");
+  if (ssp !== 3 || ssr !== 4) throw new Error("series shape by_row");
+  const selCells = [];
+  for (let r = 2; r < 6; r++) for (let c = 5; c < 8; c++) selCells.push([r, c]);
+  const asg = assignSelection(selCells, [10, 2.5, 0.625, 0.15625], "by_row");
+  if (!asg.rectangular || asg.rows !== 4 || asg.cols !== 3) throw new Error("selection bbox");
+  const wTop = asg.wells.find((w) => w.row === 2 && w.col === 5);
+  const wBot = asg.wells.find((w) => w.row === 5 && w.col === 5);
+  if (wTop.point !== 0 || wTop.finalConcUM !== 10) throw new Error("selection top dose");
+  if (wBot.point !== 3 || wBot.finalConcUM !== 0.15625) throw new Error("selection bottom dose");
+  results.push("PASS units + selection assignment");
   if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
   return results;
@@ -874,6 +1274,10 @@ const ADC = {
   ellmanFreeThiols, darHIC, darSpeciesFractions, darLcmsReduced, darLcmsIntact,
   darLcmsReducedBreakdown,
   molesFromMass, reagentVolumeUL, planConjugation, yieldAndFormulation,
+  planSerialDilution, plateWellVolume, PLATE_WELL_VOLUME_UL,
+  plateMap, plateMapToCsv, PLATE_GEOMETRY, rowLabel,
+  convertConcentration, CONC_UNIT_TO_UM, seriesShapeFromSelection,
+  assignSelection, aggregateDosingPlans,
   linearRegression, extinctionCoefficient,
   darUVUncertainty, distributionDispersion, darLcmsReducedUncertainty,
   getDye, DYE_LIBRARY, selfCheck, ELLMAN_E412, IGG1_INTERCHAIN_DISULFIDES,
@@ -885,6 +1289,177 @@ const ADC = {
  * ADC.* (the embedded pure core). No formula is reimplemented here.
  */
 const $ = (id) => document.getElementById(id);
+
+/* ---- Animated ASCII antibody field (footer decoration) ---------------------
+ * A drifting fleet of small cartoon IgG molecules over a faint shimmer, in the
+ * footer. The heavy and light chains are drawn to scale: the light chain (VL-CL)
+ * covers only the Fab arm, the heavy chain (VH-CH1 + hinge + CH2-CH3 Fc stem)
+ * runs the full length — a ~2:1 length ratio, with Fab-arm ≈ Fc-stem. Heavy chain
+ * renders in the accent color, light chain muted, so the scale is legible. The
+ * cursor stirs the field: a ring ripples through the shimmer from the pointer and
+ * nearby antibodies scatter away from it, then spring back to their lane.
+ * Pure decoration — no dependency on the calc core. Honors prefers-reduced-motion
+ * (renders one static frame) and hides on small screens.  */
+// Space-filling IgG silhouette: two Fab arms + Fc stem as solid lobes, filled
+// with a density-ramp shimmer so each antibody reads as a textured molecular
+// blob (like a surface render) rather than a line drawing. '#' = body, ' ' = void.
+const AB_MASK_ROWS = [
+  "  ####   ####  ",   // Fab tips — globular VH-CH1 / VL-CL lobes, splayed
+  " #####   ##### ",
+  " #####   ##### ",
+  "  ####   ####  ",   // Fab arms descend as two separate heavy chains
+  "   ###   ###   ",   // …narrowing toward the hinge, gap preserved
+  "    #######    ",   // hinge — the two heavy chains cross/meet here
+  "    ### ###    ",   // Fc splits back into two paired heavy chains
+  "   #### ####   ",   // Fc (CH2-CH3) bulge — two strands, seam down the middle
+  "   #### ####   ",
+  "    ### ###    ",   // Fc taper
+  "    ### ###    ",
+  "     ## ##     ",   // Fc base
+];
+const AB_SW = AB_MASK_ROWS[0].length, AB_SH = AB_MASK_ROWS.length;
+// Density ramp (sparse → dense), biotic-style: index 0..6.
+const AB_RAMP = " .:*oO0@".split("");   // 8 levels; [0]=void
+// Precompute body cells, flagging edge cells (a body cell missing an orthogonal
+// body neighbour) so the outline can render darker than the shimmering interior.
+const AB_CELLS = (() => {
+  const body = (r, c) => r >= 0 && r < AB_SH && c >= 0 && c < AB_SW && AB_MASK_ROWS[r][c] === "#";
+  const out = [];
+  for (let r = 0; r < AB_SH; r++) for (let c = 0; c < AB_SW; c++) {
+    if (!body(r, c)) continue;
+    const edge = !(body(r - 1, c) && body(r + 1, c) && body(r, c - 1) && body(r, c + 1));
+    out.push({ r, c, edge });
+  }
+  return out;
+})();
+
+// deterministic PRNG so the fleet layout is stable across redraws
+function abFleet(cols, rows, n, seed) {
+  let s = seed || 1;
+  const rnd = () => (s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const fleet = [];
+  const step = cols / n;                              // even spacing across width
+  for (let i = 0; i < n; i++) fleet.push({
+    x: i * step + rnd() * step * 0.15,                // evenly distributed, faint jitter
+    vx: 0.32,                                         // uniform rightward drift (chars/sec)
+    phase: rnd() * Math.PI * 2,                       // interior-shimmer phase
+    dx: 0, dy: 0,                                     // cursor-scatter offset (decays each frame)
+  });
+  return fleet;
+}
+
+// Two-octave value noise in space+time → smooth shimmer that flows through the
+// molecules. Returns ~0..1. Cheap trig hash, no tables.
+function abNoise(x, y, t) {
+  const a = Math.sin(x * 0.55 + t * 1.1) * Math.cos(y * 0.7 - t * 0.8);
+  const b = Math.sin((x + y) * 0.33 - t * 1.6) * Math.cos((x - y) * 0.4 + t * 0.5);
+  return (a * 0.6 + b * 0.4 + 1) / 2;                                // 0..1
+}
+// Advance the fleet and build one grid frame. mouse = {x,y} char coords or null.
+// Cells carry a layer tag: 'H' outline (dark), 'L' interior fill (light), '' shimmer.
+function abFieldFrame(fleet, cols, rows, t, dt, mouse) {
+  const g = Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => ({ c: " ", k: "" })));
+  // Background shimmer: a flowing density field across the ramp so the space
+  // between the molecules glimmers with '. : * o O 0' (outline glyph '@' stays
+  // reserved for the antibodies). Blank below a threshold to keep negative space.
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    let n = abNoise(x * 0.45, y * 0.55, t * 0.8);                     // low freq → large blobs
+    if (mouse) {
+      const d = Math.hypot(x - mouse.x, y - mouse.y);
+      n += 0.6 * Math.cos(d * 0.9 - t * 6) * Math.exp(-d * 0.10);     // cursor ripple
+    }
+    let ch = " ";
+    if (n > 0.66) ch = AB_RAMP[1 + Math.min(5, Math.floor((n - 0.66) / 0.066))]; // ramp 1..6
+    g[y][x] = { c: ch, k: "" };
+  }
+  const put = (x, y, c, k) => {
+    x = Math.round(x); y = Math.round(y);
+    if (c !== " " && x >= 0 && x < cols && y >= 0 && y < rows) g[y][x] = { c, k };
+  };
+  const amp = (rows - AB_SH) / 2 - 0.5;               // wave amplitude (rows)
+  const mid = (rows - AB_SH) / 2;                      // vertical centre of the lane
+  for (const a of fleet) {
+    a.x += a.vx * dt;
+    if (a.x > cols + 2) a.x -= (cols + 2 + AB_SW);     // wrap (marquee)
+    // Continuous traveling wave: vertical position follows a sine of x that
+    // scrolls with time, so the whole fleet reads as one wave passing through.
+    const wy = mid + amp * Math.sin(a.x * 0.14 - t * 0.9);
+    if (mouse) {                                       // cursor shove
+      const cxp = a.x + AB_SW / 2, cyp = wy + AB_SH / 2;
+      const dxm = cxp - mouse.x, dym = cyp - mouse.y, dist = Math.hypot(dxm, dym);
+      if (dist < 12 && dist > 0.01) {
+        const push = (12 - dist) * 0.6;
+        a.dx += (dxm / dist) * push * dt * 6;
+        a.dy += (dym / dist) * push * dt * 6;
+      }
+    }
+    a.dx *= 0.90; a.dy *= 0.90;                        // spring back to wave
+    const bx = a.x + a.dx, by = wy + a.dy;
+    // Sliding window: a bright vertical band sweeps left→right through each
+    // molecule, lighting the interior to reveal the two paired heavy chains.
+    const sweep = ((t * 0.30 + a.phase * 0.16) % 1) * (AB_SW + 4) - 2;  // local x
+    // Fill the silhouette: interior shimmers across the mid/high ramp, the
+    // detected outline stays solid & dark so the molecule keeps a crisp edge.
+    for (const cell of AB_CELLS) {
+      const gx = bx + cell.c, gy = by + cell.r;
+      if (cell.edge) { put(gx, gy, AB_RAMP[7], "H"); continue; }      // '@' outline
+      const inWin = Math.abs(cell.c - sweep) < 1.3;                    // scan band
+      if (inWin) { put(gx, gy, AB_RAMP[7], "H"); continue; }           // window highlight
+      const n = abNoise(gx * 1.3, gy * 1.3, t + a.phase);            // 0..1
+      const lvl = 3 + Math.min(4, Math.floor(n * 5));                 // ramp idx 3..7
+      put(gx, gy, AB_RAMP[lvl], "L");
+    }
+  }
+  return g;
+}
+function abEsc(c) { return c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c; }
+function abFieldHtml(g) {
+  return g.map((row) => {
+    let s = "", run = "", k = null;
+    const flush = () => {
+      if (!run) return;
+      s += k === "H" ? "<b>" + run + "</b>" : k === "L" ? "<i>" + run + "</i>" : run;
+      run = "";
+    };
+    for (const cell of row) { if (cell.k !== k) { flush(); k = cell.k; } run += abEsc(cell.c); }
+    flush(); return s;
+  }).join("\n");
+}
+let _abRAF = null, _abFleet = null, _abMouse = null, _abLast = 0;
+function startAntibodyArt() {
+  const el = $("ab_art");
+  if (!el) return;
+  // size the field to the element's character grid
+  const cs = getComputedStyle(el);
+  const chW = (parseFloat(cs.fontSize) || 11) * 0.6, chH = (parseFloat(cs.lineHeight) || 12);
+  const cols = Math.max(30, Math.min(220, Math.floor((el.clientWidth || 900) / chW)));
+  const rows = AB_SH + 7;                               // extra rows for the wave amplitude
+  const density = Math.max(3, Math.round(cols / 26));   // antibodies scale with width
+  _abFleet = abFleet(cols, rows, density, 20240607);
+  // cursor tracking (map client coords into the char grid)
+  const onMove = (e) => {
+    const rect = el.getBoundingClientRect();
+    _abMouse = { x: (e.clientX - rect.left) / chW, y: (e.clientY - rect.top) / chH };
+  };
+  el.addEventListener("pointermove", onMove);
+  el.addEventListener("pointerleave", () => { _abMouse = null; });
+  const reduced = window.matchMedia
+    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduced) { el.innerHTML = abFieldHtml(abFieldFrame(_abFleet, cols, rows, 0.6, 0, null)); return; }
+  _abLast = performance.now();
+  const tick = (now) => {
+    const dt = Math.min(0.1, (now - _abLast) / 1000); _abLast = now;
+    el.innerHTML = abFieldHtml(abFieldFrame(_abFleet, cols, rows, now / 1000, dt, _abMouse));
+    _abRAF = requestAnimationFrame(tick);
+  };
+  _abRAF = requestAnimationFrame(tick);
+  document.addEventListener("visibilitychange", () => {   // pause when tab hidden
+    if (document.hidden) { if (_abRAF) cancelAnimationFrame(_abRAF); _abRAF = null; }
+    else if (!_abRAF && !reduced) { _abLast = performance.now(); _abRAF = requestAnimationFrame(tick); }
+  });
+}
+
 const num = (id) => parseFloat($(id).value);
 const fmt = (x, d = 4) => (x === null || x === undefined || Number.isNaN(x))
   ? "&mdash;" : Number(x).toLocaleString("en-US", { maximumFractionDigits: d, minimumFractionDigits: 0 });
@@ -899,15 +1474,42 @@ function setDarMethod(m) {
     el.classList.toggle("active", el.id === "method-" + m));
 }
 
-// ---- Tabs ----
-document.querySelectorAll("#tabs button").forEach((b) => {
-  b.addEventListener("click", () => {
-    document.querySelectorAll("#tabs button").forEach((x) => x.classList.remove("active"));
+// ---- Tabs (ARIA tablist with roving tabindex + arrow-key navigation) ----
+(function () {
+  const tabs = Array.from(document.querySelectorAll("#tabs button"));
+  function select(b, focus) {
+    tabs.forEach((x) => {
+      const on = x === b;
+      x.classList.toggle("active", on);
+      x.setAttribute("aria-selected", on ? "true" : "false");
+      x.tabIndex = on ? 0 : -1;
+    });
     document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
-    b.classList.add("active");
     $("panel-" + b.dataset.tab).classList.add("active");
+    if (focus) b.focus();
+  }
+  tabs.forEach((b, i) => {
+    const panel = $("panel-" + b.dataset.tab);
+    b.setAttribute("role", "tab");
+    b.setAttribute("aria-selected", b.classList.contains("active") ? "true" : "false");
+    b.tabIndex = b.classList.contains("active") ? 0 : -1;
+    if (panel) {
+      panel.setAttribute("role", "tabpanel");
+      if (!b.id) b.id = "tab-" + b.dataset.tab;
+      b.setAttribute("aria-controls", panel.id);
+      panel.setAttribute("aria-labelledby", b.id);
+    }
+    b.addEventListener("click", () => select(b, false));
+    b.addEventListener("keydown", (e) => {
+      let ni = null;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") ni = (i + 1) % tabs.length;
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") ni = (i - 1 + tabs.length) % tabs.length;
+      else if (e.key === "Home") ni = 0;
+      else if (e.key === "End") ni = tabs.length - 1;
+      if (ni !== null) { e.preventDefault(); select(tabs[ni], true); }
+    });
   });
-});
+})();
 
 // ================= UV/Vis DAR =================
 function calcUV() {
@@ -986,7 +1588,7 @@ function reagentRowHTML(r = { name: "", equiv: "", basis: "mAb", stock_mM: "" })
         <option value="thiol"${r.basis === "thiol" ? " selected" : ""}>per free thiol</option></select></label>
       <label class="field" style="margin:0"><span>Stock (mM)</span><input class="rg-stock" type="number" step="0.1" value="${r.stock_mM}"></label>
     </div>
-    <div class="btnrow" style="margin-top:8px"><button class="act" style="background:#8896a4" onclick="this.closest('.reagent-row').remove();calcConj()">Remove</button></div>
+    <div class="btnrow" style="margin-top:8px"><button class="subtle" onclick="this.closest('.reagent-row').remove();calcConj()">Remove</button></div>
   </div>`;
 }
 function addReagentRow() { $("cj_reagents").insertAdjacentHTML("beforeend", reagentRowHTML()); bindConj(); }
@@ -1145,6 +1747,728 @@ function calcYield() {
       fmt(Math.abs(y.vChangeML), 3) + " mL");
   }
   $("yl_out").innerHTML = html;
+}
+
+// ================= In vitro dosing — plate designer =================
+// Paint-first workflow: the user selects a block of wells, then the block's
+// geometry (dose axis x replicate axis) drives a per-group serial-dilution
+// plan. Multiple named groups (cell line + ADC) share one plate.
+const DS_GROUP_COLORS = ["#2f7bd6", "#e0762a", "#3aa657", "#b0439a", "#c7391f", "#7a5cc0", "#2196a6", "#a08a1e"];
+let dsState = { groups: [], pending: new Set(), nextId: 1, editingId: null };
+let dsDrag = null;  // {anchorR, anchorC, add} during a marquee drag
+
+// Current serial-dilution settings held in the group form (carry forward between
+// groups + drive the live paint preview).
+function dsFormSettings() {
+  return {
+    stockUM: num("ds_g_stock"),
+    topInUnit: num("ds_g_top"),
+    unit: dsUnit(),
+    fold: num("ds_g_fold"),
+    mode: $("ds_g_mode").value,
+    factor: num("ds_g_factor"),
+    overage: num("ds_g_overage"),
+    wellVolumeUL: num("ds_well"),
+    orientation: dsOrient(),
+  };
+}
+
+// Provisional per-well concentrations for the pending selection, using the
+// current form settings — powers the live preview before a group is committed.
+function dsPendingPreview() {
+  const cells = pendingCells();
+  if (!cells.length) return {};
+  const rows = cells.map((x) => x[0]), cols = cells.map((x) => x[1]);
+  const bbRows = Math.max(...rows) - Math.min(...rows) + 1;
+  const bbCols = Math.max(...cols) - Math.min(...cols) + 1;
+  const s = dsFormSettings();
+  const [nPoints, replicates] = ADC.seriesShapeFromSelection(bbRows, bbCols, s.orientation);
+  const topUM = ADC.convertConcentration(s.topInUnit, s.unit, "uM");
+  let plan;
+  try {
+    plan = ADC.planSerialDilution({
+      stockUM: s.stockUM, topUM, fold: s.fold, nPoints, replicates,
+      wellVolumeUL: s.wellVolumeUL, doseMode: s.mode, doseFactor: s.factor, overage: s.overage,
+    });
+  } catch (e) { return {}; }
+  const asg = ADC.assignSelection(cells, plan.finalConcsUM, s.orientation);
+  const m = {};
+  asg.wells.forEach((w) => {
+    const cu = w.finalConcUM == null ? null : ADC.convertConcentration(w.finalConcUM, "uM", s.unit);
+    m[dsKey(w.row, w.col)] = { conc: cu, rep: w.replicate, unit: s.unit };
+  });
+  return m;
+}
+
+// A well is locked from painting if a *committed* group other than the one being
+// edited owns it.
+function dsCellLocked(r, c) {
+  const g = dsGroupAt(r, c);
+  return g && g.id !== dsState.editingId;
+}
+
+function dsPlate() { return $("ds_plate").value; }
+function dsOrient() { return $("ds_orient").value; }
+function dsUnit() { return $("ds_unit").value; }
+function dsUnitLabel(u) { return (u || dsUnit()) === "uM" ? "\u00b5M" : (u || dsUnit()); }
+function dsGeom() { return ADC.PLATE_GEOMETRY[dsPlate()]; }
+function dsKey(r, c) { return r + "," + c; }
+
+// which committed group owns a well (or null)
+function dsGroupAt(r, c) {
+  const k = dsKey(r, c);
+  return dsState.groups.find((g) => g.cellSet.has(k)) || null;
+}
+
+// Compute a group's plan + per-well assignment from its stored settings.
+function dsComputeGroup(g) {
+  const cells = g.cells;
+  const rows = cells.map((x) => x[0]), cols = cells.map((x) => x[1]);
+  const bbRows = Math.max(...rows) - Math.min(...rows) + 1;
+  const bbCols = Math.max(...cols) - Math.min(...cols) + 1;
+  const [nPoints, replicates] = ADC.seriesShapeFromSelection(bbRows, bbCols, g.orientation);
+  const topUM = ADC.convertConcentration(g.topInUnit, g.unit, "uM");
+  const plan = ADC.planSerialDilution({
+    stockUM: g.stockUM, topUM, fold: g.fold, nPoints, replicates,
+    wellVolumeUL: g.wellVolumeUL, doseMode: g.mode, doseFactor: g.factor, overage: g.overage,
+  });
+  const asg = ADC.assignSelection(cells, plan.finalConcsUM, g.orientation);
+  return { plan, asg, nPoints, replicates };
+}
+
+// ---- Plate grid rendering + painting ----
+function renderDoseGrid() {
+  const [rows, cols] = dsGeom();
+  const orient = dsOrient();
+  // precompute per-well concentration (in display unit) for committed groups
+  const wellInfo = {};                       // "r,c" -> {conc, rep, color, name}
+  dsState.groups.forEach((g) => {
+    // The group being edited normally shows as the live pending selection instead
+    // of its committed color — but ONLY while a pending block actually stands in
+    // for it. If the selection is empty (e.g. an edit was abandoned) we must still
+    // render the committed group, or it would vanish from the plate entirely.
+    if (g.id === dsState.editingId && dsState.pending.size) return;
+    let asg;
+    try {
+      ({ asg } = dsComputeGroup(g));
+    } catch (err) {
+      // Invalid group (e.g. from a loaded design): still color its wells so it's
+      // visible on the map, just without a computed concentration.
+      g.cells.forEach(([r, c]) => {
+        wellInfo[dsKey(r, c)] = { conc: null, unit: g.unit, rep: null, color: g.color, name: g.name };
+      });
+      return;
+    }
+    asg.wells.forEach((w) => {
+      const cu = w.finalConcUM == null ? null : ADC.convertConcentration(w.finalConcUM, "uM", g.unit);
+      wellInfo[dsKey(w.row, w.col)] = { conc: cu, unit: g.unit, rep: w.replicate, color: g.color, name: g.name };
+    });
+  });
+  const preview = dsPendingPreview();        // provisional concs for the pending block
+
+  let g = `<table class="plate" id="ds_grid_tbl"><thead><tr><th></th>`;
+  for (let c = 0; c < cols; c++) g += `<th class="num">${c + 1}</th>`;
+  g += `</tr></thead><tbody>`;
+  for (let r = 0; r < rows; r++) {
+    g += `<tr><th>${ADC.rowLabel(r)}</th>`;
+    for (let c = 0; c < cols; c++) {
+      const k = dsKey(r, c);
+      const info = wellInfo[k];
+      const pend = dsState.pending.has(k);
+      let cls = "well", style = "", inner = "", title = ADC.rowLabel(r) + (c + 1);
+      if (info) {
+        style = `background:${info.color};color:#fff;cursor:pointer;`;
+        cls += " committed";
+        if (info.conc != null) { inner = `<div class="pc">${fmt(info.conc, 3)}</div><div class="pr">r${info.rep}</div>`; title += `: ${info.name} — ${fmt(info.conc, 4)} ${info.unit}, rep ${info.rep} · click to edit`; }
+        else { inner = `<div class="pr">${info.name}</div>`; title += `: ${info.name} · click to edit`; }
+      }
+      if (pend) {
+        cls += " pending";
+        const pv = preview[k];
+        if (pv && pv.conc != null) { inner = `<div class="pc">${fmt(pv.conc, 3)}</div><div class="pr">r${pv.rep}</div>`; title += `: ${fmt(pv.conc, 4)} ${pv.unit}, rep ${pv.rep}`; }
+      }
+      g += `<td class="${cls}" data-r="${r}" data-c="${c}" style="${style}" title="${title}">${inner}</td>`;
+    }
+    g += `</tr>`;
+  }
+  g += `</tbody></table>`;
+  $("ds_grid").innerHTML = g;
+}
+
+// selection is a rectangle from anchor to current cell
+function dsRectCells(r0, c0, r1, c1) {
+  const cells = [];
+  const [rows, cols] = dsGeom();
+  for (let r = Math.min(r0, r1); r <= Math.max(r0, r1); r++)
+    for (let c = Math.min(c0, c1); c <= Math.max(c0, c1); c++)
+      if (r < rows && c < cols) cells.push([r, c]);
+  return cells;
+}
+
+// Painting is driven by Pointer Events so mouse, touch, and pen all work. During
+// a touch drag the pointer is captured to the origin element, so instead of
+// relying on pointerover we hit-test the well under the current coordinates.
+function dsWellAtPoint(x, y) {
+  const el = document.elementFromPoint(x, y);
+  return el && el.closest ? el.closest("td.well") : null;
+}
+function dsGridPointerDown(e) {
+  const td = e.target.closest("td.well");
+  if (!td) return;
+  e.preventDefault();
+  const r = +td.dataset.r, c = +td.dataset.c;
+  // Clicking a well that already belongs to a committed group opens that group
+  // for editing (more discoverable than the row's Edit button, and it makes
+  // every group — including the first — directly clickable to edit).
+  const owner = dsGroupAt(r, c);
+  if (owner && owner.id !== dsState.editingId) { editDoseGroup(owner.id); return; }
+  dsDrag = { anchorR: r, anchorC: c };
+  dsState.pending = new Set(dsRectCells(r, c, r, c).map(([rr, cc]) => dsKey(rr, cc)));
+  renderDoseGrid();
+  showDoseGroupForm();                        // live geometry + preview while dragging
+}
+function dsGridPointerMove(e) {
+  if (!dsDrag) return;
+  const td = dsWellAtPoint(e.clientX, e.clientY);
+  if (!td) return;
+  e.preventDefault();
+  const r = +td.dataset.r, c = +td.dataset.c;
+  const cells = dsRectCells(dsDrag.anchorR, dsDrag.anchorC, r, c)
+    .filter(([rr, cc]) => !dsCellLocked(rr, cc));
+  dsState.pending = new Set(cells.map(([rr, cc]) => dsKey(rr, cc)));
+  renderDoseGrid();
+  showDoseGroupForm();                        // live geometry + preview while dragging
+}
+function dsGridPointerUp() {
+  if (!dsDrag) return;
+  dsDrag = null;
+  showDoseGroupForm();
+}
+
+function pendingCells() {
+  return [...dsState.pending].map((k) => k.split(",").map(Number));
+}
+
+function showDoseGroupForm() {
+  const cells = pendingCells();
+  if (!cells.length) { $("ds_group_form").style.display = "none"; return; }
+  const rows = cells.map((x) => x[0]), cols = cells.map((x) => x[1]);
+  const bbRows = Math.max(...rows) - Math.min(...rows) + 1;
+  const bbCols = Math.max(...cols) - Math.min(...cols) + 1;
+  const [nPoints, reps] = ADC.seriesShapeFromSelection(bbRows, bbCols, dsOrient());
+  const rectangular = cells.length === bbRows * bbCols;
+  let geo = `— ${cells.length} well(s): <b>${nPoints}</b> dose point(s) &times; <b>${reps}</b> replicate(s)`;
+  if (!rectangular) geo += ` <span style="color:var(--warn)">(non-rectangular; volumes use the ${bbRows}&times;${bbCols} bounding box)</span>`;
+  // surface feasibility warnings live, before commit
+  const s = dsFormSettings();
+  const topUM = ADC.convertConcentration(s.topInUnit, s.unit, "uM");
+  let warnHtml = "";
+  try {
+    const pp = ADC.planSerialDilution({
+      stockUM: s.stockUM, topUM, fold: s.fold, nPoints, replicates: reps,
+      wellVolumeUL: s.wellVolumeUL, doseMode: s.mode, doseFactor: s.factor, overage: s.overage,
+    });
+    if (pp.warnings && pp.warnings.length) warnHtml = ` <span style="color:var(--warn)">&#9888; ${pp.warnings.join("; ")}</span>`;
+  } catch (e) { warnHtml = ` <span style="color:var(--danger)">&#9888; ${e.message || e}</span>`; }
+  $("ds_sel_geo").innerHTML = geo + warnHtml;
+  const editing = dsState.editingId != null;
+  $("ds_form_title").textContent = editing ? "Edit dose group" : "New dose group";
+  $("ds_commit_btn").innerHTML = '<svg class="ic"><use href="#ic-check"/></svg>' + (editing ? "Save changes" : "Add group");
+  if (!editing && !$("ds_g_name").value) $("ds_g_name").value = "Group " + String.fromCharCode(65 + dsState.groups.length);
+  $("ds_group_form").style.display = "";
+}
+
+// Re-open a committed group in the form for editing.
+function editDoseGroup(id) {
+  const g = dsState.groups.find((x) => x.id === id);
+  if (!g) return;
+  dsState.editingId = id;
+  dsState.pending = new Set(g.cells.map(([r, c]) => dsKey(r, c)));
+  $("ds_g_name").value = g.name;
+  $("ds_g_cell").value = g.cell;
+  $("ds_g_adc").value = g.adc;
+  $("ds_g_stock").value = g.stockUM;
+  $("ds_unit").value = g.unit;
+  $("ds_g_top").value = g.topInUnit;         // already in g.unit; raw value for the number input
+  $("ds_g_fold").value = g.fold;
+  $("ds_g_mode").value = g.mode;
+  $("ds_g_factor").value = g.factor;
+  $("ds_g_overage").value = g.overage;
+  dsGroupModeChange();
+  dsUnitChange();
+  renderDoseGrid();
+  showDoseGroupForm();
+  $("ds_group_form").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function dsGroupModeChange() {
+  $("ds_g_factor_field").style.display = $("ds_g_mode").value === "spike" ? "" : "none";
+  dsFormChange();
+}
+// Re-render the grid preview + geometry line when a dilution parameter changes
+// while a block is selected (or being edited).
+function dsFormChange() {
+  if (dsState.pending.size) { renderDoseGrid(); showDoseGroupForm(); }
+}
+function dsUnitChange() {
+  $("ds_g_top_unit").textContent = "(" + dsUnitLabel() + ")";
+  showDoseGroupForm();
+}
+function dsPlateChange() {
+  $("ds_well").value = ADC.plateWellVolume(dsPlate());
+  // drop selections/groups that fall outside the new geometry
+  const [rows, cols] = dsGeom();
+  dsState.groups = dsState.groups.filter((g) => g.cells.every(([r, c]) => r < rows && c < cols));
+  dsState.groups.forEach((g) => { g.cellSet = new Set(g.cells.map(([r, c]) => dsKey(r, c))); });
+  clearDosePending();
+}
+function dsOrientChange() { renderDoseGrid(); renderDoseGroups(); }
+
+function clearDosePending() {
+  dsState.pending = new Set();
+  dsState.editingId = null;
+  $("ds_group_form").style.display = "none";
+  // Clear only the identity fields; the dilution settings (stock/top/fold/mode/
+  // factor/overage/unit) carry forward to the next group so a whole plate of the
+  // same series across cell lines needs just name + cell line re-entered.
+  $("ds_g_name").value = "";
+  $("ds_g_cell").value = "";
+  $("ds_g_adc").value = "";
+  renderDoseGrid();
+}
+
+function commitDoseGroup() {
+  const cells = pendingCells();
+  if (!cells.length) {
+    // Nothing selected. If we were mid-edit, clear the edit flag so the group
+    // doesn't stay hidden on the plate (editingId is otherwise skipped by
+    // renderDoseGrid). Then re-render so the committed group reappears.
+    if (dsState.editingId != null) { clearDosePending(); }
+    alert("Select a block of wells first.");
+    return;
+  }
+  const editing = dsState.editingId != null
+    ? dsState.groups.find((x) => x.id === dsState.editingId) : null;
+  const fields = {
+    name: $("ds_g_name").value.trim() || ("Group " + dsState.nextId),
+    cell: $("ds_g_cell").value.trim(),
+    adc: $("ds_g_adc").value.trim(),
+    stockUM: num("ds_g_stock"),
+    topInUnit: num("ds_g_top"),
+    unit: dsUnit(),
+    fold: num("ds_g_fold"),
+    mode: $("ds_g_mode").value,
+    factor: num("ds_g_factor"),
+    overage: num("ds_g_overage"),
+    wellVolumeUL: num("ds_well"),
+    orientation: dsOrient(),
+    cells,
+    cellSet: new Set(cells.map(([r, c]) => dsKey(r, c))),
+  };
+  // Validate the dilution math BEFORE mutating state, so an invalid group can
+  // never be committed into dsState.groups (a group that throws in
+  // dsComputeGroup would otherwise blank every renderer that loops over groups).
+  const probe = Object.assign(
+    { cellSet: fields.cellSet, cells: fields.cells },
+    fields
+  );
+  try {
+    dsComputeGroup(probe);
+  } catch (err) {
+    alert("Can't add this group:\n" + (err && err.message ? err.message : err)
+      + "\n\nAdjust the dilution settings (stock, top, fold, or mode) and try again.");
+    return;
+  }
+  let committedId;
+  if (editing) {
+    Object.assign(editing, fields);          // keep id + color
+    committedId = editing.id;
+  } else {
+    const ng = Object.assign({
+      id: dsState.nextId++,
+      color: DS_GROUP_COLORS[(dsState.groups.length) % DS_GROUP_COLORS.length],
+    }, fields);
+    dsState.groups.push(ng);
+    committedId = ng.id;
+  }
+  clearDosePending();
+  renderDoseGroups();
+  calcDosing();
+  flashDoseGroupRow(committedId, editing ? "Saved" : "Added");
+}
+
+// After add/save, scroll the affected row into view and briefly highlight it, so
+// the commit is unmistakable even when the plate grid + form push the Dose-groups
+// list below the fold.
+function flashDoseGroupRow(id, verb) {
+  const row = document.querySelector(`#ds_groups tr[data-gid="${id}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: "smooth", block: "center" });
+  row.classList.add("just-added");
+  setTimeout(() => row.classList.remove("just-added"), 1600);
+}
+
+function removeDoseGroup(id) {
+  dsState.groups = dsState.groups.filter((g) => g.id !== id);
+  renderDoseGrid();
+  renderDoseGroups();
+  calcDosing();
+}
+
+function renderDoseGroups() {
+  if (!dsState.groups.length) { $("ds_groups").innerHTML = ""; return; }
+  let h = `<div class="card" style="margin-top:12px"><h3>Dose groups</h3>`
+    + `<div style="overflow-x:auto"><table class="dye"><thead><tr>`
+    + `<th></th><th>Group</th><th>Cell line</th><th>ADC</th><th class="num">Points</th>`
+    + `<th class="num">Reps</th><th class="num">Top (${dsUnitLabel()})</th><th class="num">Fold</th>`
+    + `<th>Mode</th><th></th></tr></thead><tbody>`;
+  dsState.groups.forEach((g) => {
+    const swatch = `<td><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${g.color}"></span></td>`;
+    const actions = `<td><button class="ghost" style="padding:2px 8px" title="Edit" onclick="editDoseGroup(${g.id})">Edit</button> `
+      + `<button class="delrow" title="Remove" onclick="removeDoseGroup(${g.id})">&times;</button></td>`;
+    // A group with invalid dilution params must never blank the whole list:
+    // render it as an inline error row that can still be edited or removed.
+    let nPoints, replicates;
+    try {
+      ({ nPoints, replicates } = dsComputeGroup(g));
+    } catch (err) {
+      h += `<tr data-gid="${g.id}">${swatch}<td>${g.name || "—"}</td><td>${g.cell || "—"}</td><td>${g.adc || "—"}</td>`
+        + `<td class="num" colspan="5" style="color:var(--danger)">&#9888; ${err && err.message ? err.message : err}</td>`
+        + actions + `</tr>`;
+      return;
+    }
+    const topInGroupUnit = ADC.convertConcentration(ADC.convertConcentration(g.topInUnit, g.unit, "uM"), "uM", dsUnit());
+    h += `<tr data-gid="${g.id}">${swatch}`
+      + `<td>${g.name || "—"}</td><td>${g.cell || "—"}</td><td>${g.adc || "—"}</td>`
+      + `<td class="num">${nPoints}</td><td class="num">${replicates}</td>`
+      + `<td class="num">${fmt(topInGroupUnit, 4)}</td><td class="num">${fmt(g.fold, 2)}</td>`
+      + `<td>${g.mode === "spike" ? fmt(g.factor, 0) + "× spike" : "replace"}</td>`
+      + actions + `</tr>`;
+  });
+  h += `</tbody></table></div></div>`;
+  $("ds_groups").innerHTML = h;
+}
+
+// ---- Combined recipe across all groups ----
+function calcDosing() {
+  renderDoseGrid();
+  if (!dsState.groups.length) {
+    $("ds_out").innerHTML = placeholder("Paint a block of wells and add a group to see the dilution recipe.");
+    $("ds_table_wrap").innerHTML = "";
+    $("ds_export_row").style.display = "none";
+    return;
+  }
+  const unit = dsUnit();
+  // Partition into computable and invalid groups so one bad group (e.g. from a
+  // loaded design) can't throw and blank the entire recipe view.
+  const computed = [];
+  const allWarn = [];
+  dsState.groups.forEach((g) => {
+    try {
+      computed.push({ g, ...dsComputeGroup(g) });
+    } catch (err) {
+      allWarn.push(`${g.name}: ${err && err.message ? err.message : err} (group skipped)`);
+    }
+  });
+  const plans = computed.map((c) => c.plan);
+  const agg = ADC.aggregateDosingPlans(plans);
+  computed.forEach((c) => {
+    c.plan.warnings.forEach((w) => allWarn.push(`${c.g.name}: ${w}`));
+    c.asg.warnings.forEach((w) => allWarn.push(`${c.g.name}: ${w}`));
+  });
+
+  let out = "<h3>Plate summary</h3>"
+    + rrow("Dose groups", String(agg.nGroups))
+    + rrow("Total wells", String(agg.totalWells), "primary")
+    + rrow("Total ADC stock", fmt(agg.totalStockUL, 3) + " &micro;L", "primary")
+    + rrow("Total assay medium", fmt(agg.totalDiluentUL, 3) + " &micro;L");
+  if (allWarn.length) out += `<div class="placeholder" style="color:var(--warn)">&#9888; ${allWarn.join("<br>")}</div>`;
+  $("ds_out").innerHTML = out;
+
+  // per-group serial-dilution recipe tables
+  let tbl = "";
+  computed.forEach(({ g, plan }) => {
+    const dispenseNote = g.mode === "spike"
+      ? `Add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well (on top of ${fmt(g.wellVolumeUL, 3)} &micro;L medium).`
+      : `Aspirate medium and add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well.`;
+    tbl += `<div class="card" style="margin-top:12px"><h3><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${g.color};margin-right:6px"></span>${g.name}`
+      + `<span class="sub"> — ${g.cell || "cell line n/a"}${g.adc ? " · " + g.adc : ""}</span></h3>`
+      + `<p class="sub">Prepare each tube to ${fmt(plan.vTubeTotalUL, 3)} &micro;L, mix, transfer ${fmt(plan.vTransferUL, 3)} &micro;L to the next tube. ${dispenseNote}</p>`
+      + `<div style="overflow-x:auto"><table class="dye"><thead><tr>`
+      + `<th>Tube</th><th class="num">Final (${dsUnitLabel(unit)})</th><th class="num">Working (${dsUnitLabel(unit)})</th>`
+      + `<th>Source</th><th class="num">Transfer in (&micro;L)</th><th class="num">Medium (&micro;L)</th>`
+      + `<th class="num">Tube total (&micro;L)</th><th class="num">Dispense (&micro;L)</th></tr></thead><tbody>`;
+    plan.tubes.forEach((t) => {
+      const fc = ADC.convertConcentration(t.finalConcUM, "uM", unit);
+      const wc = ADC.convertConcentration(t.workingConcUM, "uM", unit);
+      tbl += `<tr><td>${t.index}</td><td class="num">${fmt(fc, 4)}</td>`
+        + `<td class="num">${fmt(wc, 4)}</td><td>${t.source}</td>`
+        + `<td class="num">${fmt(t.transferInUL, 3)}</td><td class="num">${fmt(t.diluentUL, 3)}</td>`
+        + `<td class="num">${fmt(t.totalUL, 3)}</td><td class="num">${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
+    });
+    tbl += "</tbody></table></div></div>";
+  });
+  $("ds_table_wrap").innerHTML = tbl;
+  $("ds_export_row").style.display = "";
+}
+
+// ---- Printable bench sheet (map + dosing info) → Save-as-PDF / print ----
+// buildBenchSheetHtml() returns a self-contained HTML document string so it can
+// be unit-tested headlessly; printBenchSheet() opens it in a new window and
+// triggers the browser print dialog (choose "Save as PDF" for a file).
+function dsGroupDoseRange(g) {
+  const { plan } = dsComputeGroup(g);
+  const cs = plan.finalConcsUM;
+  if (!cs || !cs.length) return "—";
+  const hi = ADC.convertConcentration(cs[0], "uM", g.unit);
+  const lo = ADC.convertConcentration(cs[cs.length - 1], "uM", g.unit);
+  const u = dsUnitLabel(g.unit);
+  return cs.length === 1 ? `${fmt(hi, 4)} ${u}` : `${fmt(hi, 4)} → ${fmt(lo, 4)} ${u}`;
+}
+
+function buildBenchSheetHtml() {
+  const esc = (s) => String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const [rows, cols] = dsGeom();
+  const unit = dsUnit();
+  const plate = dsPlate();
+  const orient = dsOrient() === "by_row" ? "dose decreasing down rows" : "dose decreasing across columns";
+  const when = new Date().toLocaleString();
+
+  // per-well lookup for the map
+  const wellInfo = {};
+  dsState.groups.forEach((g) => {
+    const { asg } = dsComputeGroup(g);
+    asg.wells.forEach((w) => {
+      const cu = w.finalConcUM == null ? null : ADC.convertConcentration(w.finalConcUM, "uM", g.unit);
+      wellInfo[dsKey(w.row, w.col)] = { conc: cu, unit: g.unit, rep: w.replicate, color: g.color, name: g.name };
+    });
+  });
+
+  // plate map
+  let map = `<table class="map"><thead><tr><th></th>`;
+  for (let c = 0; c < cols; c++) map += `<th>${c + 1}</th>`;
+  map += `</tr></thead><tbody>`;
+  for (let r = 0; r < rows; r++) {
+    map += `<tr><th>${ADC.rowLabel(r)}</th>`;
+    for (let c = 0; c < cols; c++) {
+      const info = wellInfo[dsKey(r, c)];
+      if (info) {
+        const label = info.conc != null ? `${fmt(info.conc, 3)}<br><span class="rep">r${info.rep}</span>` : esc(info.name);
+        map += `<td style="background:${info.color};color:#fff">${label}</td>`;
+      } else { map += `<td class="empty"></td>`; }
+    }
+    map += `</tr>`;
+  }
+  map += `</tbody></table>`;
+
+  // legend + per-group recipes
+  let legend = `<table class="info"><thead><tr><th></th><th>Group</th><th>Cell line</th><th>ADC</th>`
+    + `<th>Points × reps</th><th>Dose range</th><th>Mode</th></tr></thead><tbody>`;
+  let recipes = "";
+  const plans = [];
+  dsState.groups.forEach((g) => {
+    const { plan, nPoints, replicates } = dsComputeGroup(g);
+    plans.push(plan);
+    legend += `<tr><td><span class="sw" style="background:${g.color}"></span></td>`
+      + `<td>${esc(g.name)}</td><td>${esc(g.cell) || "—"}</td><td>${esc(g.adc) || "—"}</td>`
+      + `<td>${nPoints} × ${replicates}</td><td>${dsGroupDoseRange(g)}</td>`
+      + `<td>${g.mode === "spike" ? fmt(g.factor, 0) + "× spike" : "replace"}</td></tr>`;
+
+    const dispenseNote = g.mode === "spike"
+      ? `Add <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> to each replicate well (on top of ${fmt(g.wellVolumeUL, 3)} µL medium).`
+      : `Aspirate medium and add <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> to each replicate well.`;
+    recipes += `<div class="grp"><h3><span class="sw" style="background:${g.color}"></span>${esc(g.name)}`
+      + `<span class="sub"> — ${esc(g.cell) || "cell line n/a"}${g.adc ? " · " + esc(g.adc) : ""}</span></h3>`
+      + `<p class="sub">Prepare each tube to ${fmt(plan.vTubeTotalUL, 3)} µL, mix, transfer ${fmt(plan.vTransferUL, 3)} µL to the next tube. ${dispenseNote}</p>`
+      + `<table class="info"><thead><tr><th>Tube</th><th>Final (${dsUnitLabel(unit)})</th><th>Working (${dsUnitLabel(unit)})</th>`
+      + `<th>Source</th><th>Transfer in (µL)</th><th>Medium (µL)</th><th>Tube total (µL)</th><th>Dispense (µL)</th></tr></thead><tbody>`;
+    plan.tubes.forEach((t) => {
+      const fc = ADC.convertConcentration(t.finalConcUM, "uM", unit);
+      const wc = ADC.convertConcentration(t.workingConcUM, "uM", unit);
+      recipes += `<tr><td>${t.index}</td><td>${fmt(fc, 4)}</td><td>${fmt(wc, 4)}</td><td>${esc(t.source)}</td>`
+        + `<td>${fmt(t.transferInUL, 3)}</td><td>${fmt(t.diluentUL, 3)}</td><td>${fmt(t.totalUL, 3)}</td><td>${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
+    });
+    recipes += `</tbody></table></div>`;
+  });
+  legend += `</tbody></table>`;
+
+  const agg = ADC.aggregateDosingPlans(plans);
+  const summary = `<div class="summ"><span><b>${agg.nGroups}</b> group(s)</span>`
+    + `<span><b>${agg.totalWells}</b> wells</span>`
+    + `<span><b>${fmt(agg.totalStockUL, 3)} µL</b> total ADC stock</span>`
+    + `<span><b>${fmt(agg.totalDiluentUL, 3)} µL</b> total assay medium</span></div>`;
+
+  const css = `
+    body{font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#14202b;margin:24px;font-size:12px}
+    h1{font-size:18px;margin:0 0 2px} h2{font-size:14px;margin:18px 0 6px;border-bottom:1px solid #ccc;padding-bottom:3px}
+    h3{font-size:12.5px;margin:12px 0 4px;display:flex;align-items:center}
+    .meta{color:#5a6b7a;font-size:11px;margin-bottom:4px}
+    .summ{display:flex;flex-wrap:wrap;gap:16px;margin:8px 0;font-size:12px}
+    table{border-collapse:collapse} .map{font-size:9px;margin-top:6px} .map th{background:#eef2f6;color:#5a6b7a;padding:2px 4px;font-weight:600;text-align:center}
+    .map td{border:1px solid #cfd8e0;width:38px;height:30px;text-align:center;vertical-align:middle;font-family:ui-monospace,Menlo,Consolas,monospace}
+    .map td.empty{background:repeating-linear-gradient(45deg,#fff,#fff 4px,#f0f0f0 4px,#f0f0f0 8px)}
+    .map .rep{font-size:8px;opacity:.85}
+    .info{margin-top:6px;font-size:11px} .info th{background:#eef2f6;color:#5a6b7a;text-align:left;padding:3px 8px;font-weight:600}
+    .info td{border-bottom:1px solid #e3e9ee;padding:3px 8px;font-variant-numeric:tabular-nums}
+    .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:middle}
+    .grp{margin-top:10px;break-inside:avoid} .sub{color:#5a6b7a;font-weight:400;font-size:11px;margin:2px 0}
+    .foot{margin-top:20px;color:#8595a3;font-size:10px;border-top:1px solid #ddd;padding-top:6px}
+    @media print{body{margin:12mm} h2{break-after:avoid} .grp,.map{break-inside:avoid}}`;
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>ADC dosing bench sheet — ${esc(plate)}-well</title>`
+    + `<style>${css}</style></head><body>`
+    + `<h1>ADC In Vitro Dosing — Bench Sheet</h1>`
+    + `<div class="meta">${esc(plate)}-well plate · ${orient} · ${fmt(num("ds_well"), 3)} µL/well · generated ${esc(when)}</div>`
+    + summary
+    + `<h2>Plate map</h2>${map}`
+    + `<h2>Dose groups</h2>${legend}`
+    + `<h2>Serial-dilution recipes</h2>${recipes}`
+    + `<div class="foot">Generated by the ADC Calculator. Verify all volumes against your own protocol before use.</div>`
+    + `</body></html>`;
+}
+
+function printBenchSheet() {
+  if (!dsState.groups.length) { alert("Add at least one dose group before printing."); return; }
+  const html = buildBenchSheetHtml();
+  const w = window.open("", "_blank");
+  if (!w) { alert("Pop-up blocked. Allow pop-ups for this page to print the bench sheet."); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  // give the new document a tick to lay out, then invoke the print dialog
+  setTimeout(() => { w.focus(); w.print(); }, 250);
+}
+
+// ---- CSV export: every assigned well across all groups ----
+function exportPlateMapCsv() {
+  if (!dsState.groups.length) { alert("No dose groups to export."); return; }
+  const unit = dsUnit();
+  const lines = [`well,row,column,group,cell_line,adc,point,replicate,final_conc_${unit}`];
+  dsState.groups.forEach((g) => {
+    const { asg } = dsComputeGroup(g);
+    asg.wells.slice().sort((a, b) => a.row - b.row || a.col - b.col).forEach((w) => {
+      const well = ADC.rowLabel(w.row) + (w.col + 1);
+      const conc = w.finalConcUM == null ? "" : ADC.convertConcentration(w.finalConcUM, "uM", unit).toPrecision(6);
+      lines.push(`${well},${ADC.rowLabel(w.row)},${w.col + 1},${csvField(g.name)},${csvField(g.cell)},${csvField(g.adc)},${w.point + 1},${w.replicate},${conc}`);
+    });
+  });
+  downloadBlob(lines.join("\n"), `adc_plate_map_${stamp()}.csv`, "text/csv");
+}
+function csvField(s) { s = String(s || ""); return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; }
+
+// ---- Save / load a whole plate design (#8) ----
+// A design captures the plate-level settings plus every group. Groups store
+// cells as [[r,c],...]; cellSet is rebuilt on load (Sets don't survive JSON).
+const DESIGN_KEY = "adc_plate_designs_v1";
+const DESIGN_FORMAT = "adc-plate-design/1";
+
+function serializeDesign() {
+  return {
+    format: DESIGN_FORMAT,
+    plate: dsPlate(), orientation: dsOrient(), unit: dsUnit(), wellVolumeUL: num("ds_well"),
+    groups: dsState.groups.map((g) => ({
+      name: g.name, cell: g.cell, adc: g.adc, stockUM: g.stockUM, topInUnit: g.topInUnit,
+      unit: g.unit, fold: g.fold, mode: g.mode, factor: g.factor, overage: g.overage,
+      wellVolumeUL: g.wellVolumeUL, orientation: g.orientation, color: g.color,
+      cells: g.cells.map(([r, c]) => [r, c]),
+    })),
+  };
+}
+
+function applyDesign(d) {
+  if (!d || d.format !== DESIGN_FORMAT || !Array.isArray(d.groups)) {
+    alert("Not a recognized plate-design file."); return false;
+  }
+  if (d.plate) $("ds_plate").value = d.plate;
+  if (d.orientation) $("ds_orient").value = d.orientation;
+  if (d.unit) $("ds_unit").value = d.unit;
+  if (d.wellVolumeUL != null) $("ds_well").value = d.wellVolumeUL;
+  const [rows, cols] = dsGeom();
+  let maxId = 0;
+  dsState.groups = d.groups.map((g, i) => {
+    const cells = (g.cells || []).filter(([r, c]) => r < rows && c < cols).map(([r, c]) => [r, c]);
+    const id = i + 1; maxId = id;
+    return Object.assign({}, g, {
+      id, cells, cellSet: new Set(cells.map(([r, c]) => dsKey(r, c))),
+      color: g.color || DS_GROUP_COLORS[i % DS_GROUP_COLORS.length],
+    });
+  }).filter((g) => g.cells.length);
+  dsState.nextId = maxId + 1;
+  dsState.pending = new Set();
+  dsState.editingId = null;
+  $("ds_group_form").style.display = "none";
+  dsUnitChange();
+  renderDoseGrid();
+  renderDoseGroups();
+  calcDosing();
+  return true;
+}
+
+function loadDesignStore() {
+  try {
+    const o = JSON.parse(localStorage.getItem(DESIGN_KEY) || "{}");
+    return (o && typeof o === "object") ? o : {};
+  } catch (e) { return {}; }
+}
+function persistDesignStore(store) {
+  try { localStorage.setItem(DESIGN_KEY, JSON.stringify(store)); }
+  catch (e) { alert("Could not save to browser storage: " + e.message); }
+}
+function renderDesignList() {
+  const store = loadDesignStore();
+  const names = Object.keys(store).sort((a, b) => a.localeCompare(b));
+  const sel = $("ds_design_list");
+  sel.innerHTML = names.length
+    ? names.map((n) => `<option value="${n.replace(/"/g, "&quot;")}">${n}</option>`).join("")
+    : `<option value="">(no saved designs)</option>`;
+}
+
+function savePlateDesign() {
+  if (!dsState.groups.length) { alert("Add at least one dose group before saving."); return; }
+  const name = ($("ds_design_name").value || "").trim();
+  if (!name) { alert("Enter a name for this design."); return; }
+  const store = loadDesignStore();
+  if (store[name] && !confirm(`Overwrite the saved design "${name}"?`)) return;
+  store[name] = serializeDesign();
+  persistDesignStore(store);
+  renderDesignList();
+  $("ds_design_list").value = name;
+  $("ds_saved_hint").textContent = `Saved "${name}" (${dsState.groups.length} group(s)).`;
+}
+function loadSavedDesign() {
+  const name = $("ds_design_list").value;
+  if (!name) return;
+  const store = loadDesignStore();
+  if (!store[name]) { alert("That design is no longer saved."); return; }
+  if (dsState.groups.length && !confirm(`Replace the current ${dsState.groups.length} group(s) with "${name}"?`)) return;
+  if (applyDesign(store[name])) { $("ds_design_name").value = name; $("ds_saved_hint").textContent = `Loaded "${name}".`; }
+}
+function deleteSavedDesign() {
+  const name = $("ds_design_list").value;
+  if (!name) return;
+  if (!confirm(`Delete the saved design "${name}"? This cannot be undone.`)) return;
+  const store = loadDesignStore();
+  delete store[name];
+  persistDesignStore(store);
+  renderDesignList();
+  $("ds_saved_hint").textContent = `Deleted "${name}".`;
+}
+function exportPlateDesign() {
+  if (!dsState.groups.length) { alert("No dose groups to export."); return; }
+  const name = ($("ds_design_name").value || "plate_design").trim().replace(/[^\w.-]+/g, "_");
+  downloadBlob(JSON.stringify(serializeDesign(), null, 2), `${name}_${stamp()}.json`, "application/json");
+}
+function importPlateDesign(e) {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let d; try { d = JSON.parse(reader.result); } catch (err) { alert("Could not parse JSON: " + err.message); return; }
+    if (dsState.groups.length && !confirm("Replace the current design with the imported one?")) { e.target.value = ""; return; }
+    if (applyDesign(d)) $("ds_saved_hint").textContent = `Imported "${file.name}".`;
+    e.target.value = "";
+  };
+  reader.readAsText(file);
 }
 
 // ================= Dye library =================
@@ -1541,6 +2865,24 @@ function initBindings() {
   document.querySelectorAll("#method-uv input").forEach((el) => (el.oninput = calcUV));
   document.querySelectorAll("#panel-ellman input").forEach((el) => (el.oninput = calcEllman));
   document.querySelectorAll("#panel-yield input").forEach((el) => (el.oninput = calcYield));
+  // Plate painting: marquee-select a block of wells.
+  const grid = $("ds_grid");
+  grid.addEventListener("pointerdown", dsGridPointerDown);
+  grid.addEventListener("pointermove", dsGridPointerMove);
+  document.addEventListener("pointerup", dsGridPointerUp);
+  document.addEventListener("pointercancel", dsGridPointerUp);
+  $("ds_plate").onchange = dsPlateChange;
+  $("ds_orient").onchange = dsOrientChange;
+  $("ds_unit").onchange = dsUnitChange;
+  $("ds_g_mode").onchange = dsGroupModeChange;
+  // Live preview: any dilution parameter re-paints the pending block.
+  ["ds_g_stock", "ds_g_top", "ds_g_fold", "ds_g_factor", "ds_g_overage"]
+    .forEach((id) => ($(id).oninput = dsFormChange));
+  $("ds_well").oninput = () => {
+    dsState.groups.forEach((g) => (g.wellVolumeUL = num("ds_well")));
+    dsFormChange(); calcDosing();
+  };
+  $("ds_import_file").onchange = importPlateDesign;
   $("cj_route").onchange = () => conjPreset($("cj_route").value);
   $("nd_e280").oninput = updateCF; $("nd_elmax").oninput = updateCF;
 }
@@ -1556,16 +2898,20 @@ window.addEventListener("DOMContentLoaded", () => {
   renderEcRows();
   $("ec_results").innerHTML = placeholder("Enter a dilution series and press Compute \u03b5");
   calcUV(); calcEllman(); calcYield();
+  $("ds_well").value = ADC.plateWellVolume(dsPlate());
+  dsGroupModeChange(); dsUnitChange(); calcDosing();
+  renderDesignList();
   loadRegistry(); renderRegistry();
+  startAntibodyArt();
   try { $("adc_date").value = new Date().toISOString().slice(0, 10); } catch (e) {}
   // Run the core self-check and surface the badge in the footer.
   try {
     const res = ADC.selfCheck();
     $("selfcheck_badge").innerHTML = "core self-check: " + res.length + "/" + res.length + " golden values \u2713";
-    $("selfcheck_badge").style.color = "#2b7a78";
+    $("selfcheck_badge").style.color = "var(--ok)";
   } catch (e) {
     $("selfcheck_badge").innerHTML = "core self-check FAILED: " + e.message;
-    $("selfcheck_badge").style.color = "#b4690e";
+    $("selfcheck_badge").style.color = "var(--warn)";
   }
 });
 
