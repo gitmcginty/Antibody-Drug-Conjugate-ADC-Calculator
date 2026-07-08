@@ -2279,13 +2279,18 @@ function calcDosing() {
       ? `Add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well (on top of ${fmt(g.wellVolumeUL, 3)} &micro;L medium).`
       : `Aspirate medium and add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well.`;
     // Explicit tube-1 callout: how much ADC stock to charge into the first tube.
+    // Rendered as a highlighted box (not dim .sub text) so it's the first thing
+    // the eye lands on — this is the number people ask for at the bench.
     const t1 = plan.tubes[0];
-    const stockNote = t1
-      ? `Charge <b>tube 1</b> with <b>${fmt(t1.transferInUL, 3)} &micro;L ADC stock</b> (${fmt(g.stockUM, 4)} &micro;M) + ${fmt(t1.diluentUL, 3)} &micro;L medium.`
+    const stockBox = t1
+      ? `<div style="margin:2px 0 10px;padding:9px 12px;border-radius:8px;background:var(--accent-soft);`
+        + `border:1px solid var(--accent-line);color:var(--ink);font-size:12.5px;line-height:1.45">`
+        + `Charge <b>tube 1</b> with <b style="color:var(--accent-hover)">${fmt(t1.transferInUL, 3)} &micro;L ADC stock</b> `
+        + `(${fmt(g.stockUM, 4)} &micro;M) &#43; ${fmt(t1.diluentUL, 3)} &micro;L medium &rarr; ${fmt(t1.totalUL, 3)} &micro;L total.</div>`
       : "";
     tbl += `<div class="card" style="margin-top:12px"><h3><span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${g.color};margin-right:6px"></span>${g.name}`
       + `<span class="sub"> — ${g.cell || "cell line n/a"}${g.adc ? " · " + g.adc : ""}</span></h3>`
-      + `<p class="sub">${stockNote}</p>`
+      + stockBox
       + `<p class="sub">Prepare each tube to ${fmt(plan.vTubeTotalUL, 3)} &micro;L, mix, transfer ${fmt(plan.vTransferUL, 3)} &micro;L to the next tube. ${dispenseNote}</p>`
       + `<div style="overflow-x:auto"><table class="dye"><thead><tr>`
       + `<th>Tube</th><th class="num">Final (${dsUnitLabel(unit)})</th><th class="num">Working (${dsUnitLabel(unit)})</th>`
