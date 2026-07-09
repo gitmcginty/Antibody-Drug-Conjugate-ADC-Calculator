@@ -54,8 +54,8 @@ between the Python analysis code and the numbers a scientist sees in the browser
 
 ## The calculators (and the core functions behind them)
 
-The UI is organized into **six tabs**: **DAR**, Conjugation Designer, Ellman,
-Yield & Formulation, Dye / Payload Library, and ADC Registry. The three DAR
+The UI is organized into **seven tabs**: **DAR**, Conjugation Designer, Ellman,
+Yield & Formulation, In Vitro Dosing, Dye / Payload Library, and ADC Registry. The three DAR
 methods (UV/Vis, HIC, LC-MS) live together under the single **DAR** tab and are
 chosen with a segmented control — the same core functions back each one. Each
 calculator maps to core functions; the UI passes inputs in and formats results out.
@@ -111,6 +111,44 @@ DAR from deconvoluted mass-spec peak intensities.
 ### 6. Yield & Formulation — `yield_and_formulation`
 Recovered mass, moles, and the buffer volume needed to hit a target formulation
 concentration, from starting mass and measured post-conjugation concentration.
+
+### 6b. In Vitro Dosing — `plan_serial_dilution`, `plate_well_volume`, `plate_map`, `convert_concentration`, `series_shape_from_selection`, `assign_selection`, `aggregate_dosing_plans`
+Serial-dilution planner for cell-based assays. Enter an ADC stock (µM), a plate
+format (6- to 1536-well, with per-format default working volumes), an ideal top
+in-well concentration, a constant fold-dilution, the number of concentration
+points, and replicates. It returns the per-tube recipe (stock and assay-medium
+volumes prepared to one uniform tube volume), the volume to add to each well,
+the total stock and medium required, and feasibility warnings (stock too dilute
+for the requested top concentration; sub-microliter pipetting). Two modes:
+**spike** (add a small volume of an *f×*-concentrated dosing solution on top of
+existing medium, default 10×) and **replace** (exchange the medium for dosing
+solution already at the final concentration).
+
+A **plate map** (`plate_map`, `plate_map_to_csv`) then lays the series onto the
+physical wells of the chosen format. Three layouts: *dose across columns*
+(default — each concentration is a column, replicates run down the rows), *dose
+down rows*, and *sequential* row-major fill. The UI renders the grid with row
+labels (A–H … up to A–AF for 1536-well) and column numbers, shades each well by
+dose, annotates it with the concentration and replicate number, and exports the
+assignment as CSV. Layouts that do not fit the grid fall back to sequential with
+a warning; series exceeding plate capacity are flagged and the overflow wells
+marked off-plate rather than dropped.
+
+**Paint-first Plate Designer (UI workflow).** Rather than typing point/replicate
+counts, you *paint* a rectangular block of wells directly on the plate; the
+block geometry drives the series (`series_shape_from_selection`). By default the
+dose **decreases top→bottom** (`by_row`: rows = concentration points, columns =
+replicates); switching orientation puts the gradient across columns instead. On
+release, a group editor captures the cell line, ADC label, ADC stock (µM), top
+dose, and fold, and the block is committed as a **named group** in its own
+colour. Multiple groups can share one plate — each with a different cell
+line/ADC — and `assign_selection` maps every painted well to its point,
+replicate, and final concentration (offset blocks handled). Doses are entered in
+a selectable unit (**µM / nM / pM**, default nM) with live conversion against the
+µM stock (`convert_concentration`); the ADC stock itself always stays µM.
+`aggregate_dosing_plans` rolls the per-group plans into plate totals (wells,
+stock, medium), and the CSV export emits one row per well across all groups with
+`group,cell_line,adc` columns and the concentration in the selected unit.
 
 ### 7. Dye / Payload Library — `get_dye`, `DYE_LIBRARY`, `extinction_coefficient`
 22 built-in reference entries (Alexa Fluor AF350–AF790 + 3 pHrodo dyes) with MW,
