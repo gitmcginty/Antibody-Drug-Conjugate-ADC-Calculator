@@ -186,6 +186,213 @@ export function yieldAndFormulation(concMgml, volumeML, mwAdc,
            vFinalML: vFinal, vChangeML: vChange };
 }
 
+// ── 8b. In vitro dosing / serial dilution ───────────────────────────────────
+// Default per-well working (assay) volumes in uL, keyed by plate format.
+export const PLATE_WELL_VOLUME_UL = {
+  "6": 2000.0, "12": 1000.0, "24": 500.0, "48": 250.0,
+  "96": 100.0, "384": 50.0, "1536": 10.0,
+};
+
+export function plateWellVolume(plateType) {
+  const key = String(plateType).trim();
+  if (!(key in PLATE_WELL_VOLUME_UL)) throw new Error(`unknown plate type ${plateType}`);
+  return PLATE_WELL_VOLUME_UL[key];
+}
+
+export function planSerialDilution({
+  stockUM, topUM, fold, nPoints, replicates, wellVolumeUL,
+  doseMode = "spike", doseFactor = 10.0, doseVolumeUL = null,
+  overage = 1.1, extraDeadUL = 0.0,
+}) {
+  if (stockUM <= 0) throw new Error("stock concentration must be > 0");
+  if (topUM <= 0) throw new Error("top concentration must be > 0");
+  if (fold <= 1) throw new Error("fold-dilution must be > 1");
+  if (nPoints < 1) throw new Error("need at least 1 concentration point");
+  if (replicates < 1) throw new Error("need at least 1 replicate");
+  if (wellVolumeUL <= 0) throw new Error("well volume must be > 0");
+  if (doseMode !== "spike" && doseMode !== "replace") throw new Error("doseMode must be 'spike' or 'replace'");
+  if (doseMode === "spike" && doseFactor <= 1) throw new Error("doseFactor must be > 1 for spike mode");
+
+  const n = Math.trunc(nPoints);
+  const finalConcs = [];
+  for (let i = 0; i < n; i++) finalConcs.push(topUM / fold ** i);
+  const df = doseMode === "replace" ? 1.0 : Number(doseFactor);
+  const workingConcs = finalConcs.map((c) => c * df);
+
+  let vAdd, finalWellVol;
+  if (doseMode === "replace") { vAdd = wellVolumeUL; finalWellVol = wellVolumeUL; }
+  else {
+    vAdd = doseVolumeUL ? doseVolumeUL : wellVolumeUL / (df - 1.0);
+    finalWellVol = wellVolumeUL + vAdd;
+  }
+
+  const vUse = vAdd * replicates * overage + extraDeadUL;
+  const vXfer = vUse / (fold - 1.0);
+  const vTubeTotal = vUse + vXfer;
+
+  const stockVolTube1 = vTubeTotal * workingConcs[0] / stockUM;
+  const tubes = [];
+  for (let i = 0; i < n; i++) {
+    let source, transferIn, diluent;
+    if (i === 0) { source = "ADC stock"; transferIn = stockVolTube1; diluent = vTubeTotal - stockVolTube1; }
+    else { source = `tube ${i} (transfer)`; transferIn = vXfer; diluent = vUse; }
+    tubes.push({
+      index: i + 1, finalConcUM: finalConcs[i], workingConcUM: workingConcs[i],
+      source, transferInUL: transferIn, diluentUL: diluent,
+      totalUL: transferIn + diluent, dispenseToWellsUL: vUse,
+    });
+  }
+
+  const totalDiluent = tubes.reduce((s, t) => s + t.diluentUL, 0);
+  const warnings = [];
+  if (workingConcs[0] > stockUM) {
+    warnings.push(`Top working conc ${workingConcs[0].toPrecision(4)} uM exceeds stock `
+      + `${stockUM.toPrecision(4)} uM - stock too dilute for this design.`);
+  }
+  if (stockVolTube1 < 1.0) {
+    warnings.push(`Tube-1 stock volume ${stockVolTube1.toPrecision(3)} uL < 1 uL - hard to `
+      + `pipette accurately; use an intermediate dilution or a larger prep volume.`);
+  }
+
+  return {
+    finalConcsUM: finalConcs, workingConcsUM: workingConcs, doseMode, doseFactor: df,
+    vAddPerWellUL: vAdd, finalWellVolumeUL: finalWellVol,
+    vUsePerTubeUL: vUse, vTransferUL: vXfer, vTubeTotalUL: vTubeTotal,
+    tubes, totalStockUL: stockVolTube1, totalDiluentUL: totalDiluent,
+    totalWells: n * replicates, warnings,
+  };
+}
+
+// ── 8c. Plate map ────────────────────────────────────────────────────────────
+export const PLATE_GEOMETRY = {
+  "6": [2, 3], "12": [3, 4], "24": [4, 6], "48": [6, 8],
+  "96": [8, 12], "384": [16, 24], "1536": [32, 48],
+};
+
+export function rowLabel(i) {
+  let s = ""; i += 1;
+  while (i > 0) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); }
+  return s;
+}
+
+export function plateMap(finalConcsUM, replicates, plateType, orientation = "by_column") {
+  const key = String(plateType).trim();
+  if (!(key in PLATE_GEOMETRY)) throw new Error(`unknown plate type ${plateType}`);
+  if (replicates < 1) throw new Error("need at least 1 replicate");
+  const concs = Array.from(finalConcsUM);
+  const n = concs.length;
+  if (n < 1) throw new Error("need at least 1 concentration point");
+
+  const [rows, cols] = PLATE_GEOMETRY[key];
+  const capacity = rows * cols;
+  const used = n * replicates;
+  const warnings = [];
+
+  let orient;
+  if (orientation === "by_column" && n <= cols && replicates <= rows) orient = "by_column";
+  else if (orientation === "by_row" && n <= rows && replicates <= cols) orient = "by_row";
+  else {
+    orient = "sequential";
+    if (orientation === "by_column" || orientation === "by_row") {
+      warnings.push(`${n} points x ${replicates} replicates do not fit the ${rows}x${cols} `
+        + `grid in ${orientation} layout; using sequential fill.`);
+    }
+  }
+
+  const placed = [];
+  if (orient === "by_column") {
+    for (let i = 0; i < n; i++) for (let r = 0; r < replicates; r++) placed.push([r, i, i, r]);
+  } else if (orient === "by_row") {
+    for (let i = 0; i < n; i++) for (let r = 0; r < replicates; r++) placed.push([i, r, i, r]);
+  } else {
+    let pos = 0;
+    for (let i = 0; i < n; i++) for (let r = 0; r < replicates; r++) { placed.push([Math.floor(pos / cols), pos % cols, i, r]); pos++; }
+  }
+
+  if (used > capacity) warnings.push(`${used} wells needed exceeds ${key}-well capacity (${capacity}).`);
+
+  const wells = placed.map(([rr, cc, pi, rep0]) => {
+    const inside = rr < rows && cc < cols;
+    return {
+      row: rr, col: cc, rowLabel: inside ? rowLabel(rr) : null, colLabel: cc + 1,
+      point: pi, replicate: rep0 + 1, finalConcUM: concs[pi], inBounds: inside,
+    };
+  });
+
+  return { plateType: key, rows, cols, orientation: orient, capacity, used, wells, warnings };
+}
+
+export function plateMapToCsv(pmap) {
+  const lines = ["well,row,column,point,replicate,final_conc_uM"];
+  for (const w of pmap.wells) {
+    const well = w.rowLabel ? `${w.rowLabel}${w.colLabel}` : "(off-plate)";
+    lines.push(`${well},${w.rowLabel || ""},${w.colLabel},${w.point + 1},`
+      + `${w.replicate},${Number(w.finalConcUM).toPrecision(6)}`);
+  }
+  return lines.join("\n");
+}
+
+// ── 8e. Concentration units + selection-driven dosing ───────────────────────
+export const CONC_UNIT_TO_UM = { uM: 1.0, nM: 1e-3, pM: 1e-6 };
+
+export function convertConcentration(value, fromUnit, toUnit) {
+  if (!(fromUnit in CONC_UNIT_TO_UM)) throw new Error(`unknown unit ${fromUnit}`);
+  if (!(toUnit in CONC_UNIT_TO_UM)) throw new Error(`unknown unit ${toUnit}`);
+  return value * CONC_UNIT_TO_UM[fromUnit] / CONC_UNIT_TO_UM[toUnit];
+}
+
+export function seriesShapeFromSelection(nRows, nCols, orientation = "by_column") {
+  if (nRows < 1 || nCols < 1) throw new Error("selection must be at least 1x1");
+  if (orientation === "by_row") return [nRows, nCols];
+  return [nCols, nRows];
+}
+
+export function assignSelection(cells, finalConcsUM, orientation = "by_column") {
+  const seen = new Set();
+  const cleaned = [];
+  for (const [r, c] of cells) {
+    const key = `${r},${c}`;
+    if (!seen.has(key)) { seen.add(key); cleaned.push([Math.trunc(r), Math.trunc(c)]); }
+  }
+  cleaned.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (!cleaned.length) throw new Error("no cells selected");
+  const concs = Array.from(finalConcsUM);
+  const n = concs.length;
+
+  const rows = cleaned.map((x) => x[0]);
+  const cols = cleaned.map((x) => x[1]);
+  const r0 = Math.min(...rows), c0 = Math.min(...cols);
+  const h = Math.max(...rows) - r0 + 1;
+  const w = Math.max(...cols) - c0 + 1;
+  const rectangular = cleaned.length === h * w;
+
+  const doseSpan = orientation === "by_row" ? h : w;
+  const warnings = [];
+  if (n !== doseSpan) {
+    warnings.push(`${n} concentration points but selection spans ${doseSpan} well(s) along the dose axis.`);
+  }
+
+  const wells = cleaned.map(([r, c]) => {
+    let pt, rep;
+    if (orientation === "by_row") { pt = r - r0; rep = c - c0 + 1; }
+    else { pt = c - c0; rep = r - r0 + 1; }
+    const conc = (pt >= 0 && pt < n) ? concs[pt] : null;
+    return { row: r, col: c, point: pt, replicate: rep, finalConcUM: conc };
+  });
+
+  return { wells, rows: h, cols: w, origin: [r0, c0], rectangular, orientation, warnings };
+}
+
+export function aggregateDosingPlans(plans) {
+  const arr = Array.from(plans);
+  return {
+    nGroups: arr.length,
+    totalStockUL: arr.reduce((s, p) => s + p.totalStockUL, 0),
+    totalDiluentUL: arr.reduce((s, p) => s + p.totalDiluentUL, 0),
+    totalWells: arr.reduce((s, p) => s + p.totalWells, 0),
+  };
+}
+
 // ── 9b. Extinction-coefficient determination ────────────────────────────────
 // Ordinary least-squares fit of a Beer-Lambert dilution series. For known
 // concentrations c (mol/L) and absorbances A at fixed wavelength and path
@@ -225,6 +432,66 @@ export function extinctionCoefficient(concentrationsM, absorbances, pathLengthCm
     intercept: fit.intercept,
     rSquared: fit.rSquared,
     n: fit.n,
+  };
+}
+
+// ── 9b. Uncertainty / error propagation ─────────────────────────────────────
+// UV/Vis DAR error from the two absorbance reads. DAR depends on them only via
+// R = aLmax/a280, so sigma_R = |R|*sqrt((sA280/a280)^2+(sALmax/aLmax)^2) and
+// sigma_DAR = |dDAR/dR|*sigma_R with the analytic derivative. 95% CI = 1.96 sd.
+export function darUVUncertainty(a280, aLmax, eps280Mab, epsLmaxMab, eps280Lp, epsLmaxLp,
+                                 sigmaA280 = 0.0, sigmaALmax = 0.0) {
+  if (a280 === 0) throw new Error("A280 must be non-zero");
+  if (aLmax === 0 && sigmaALmax !== 0.0) throw new Error("A_lmax must be non-zero to propagate its error");
+  const r = aLmax / a280;
+  const denom = r * eps280Lp - epsLmaxLp;
+  if (denom === 0) throw new Error("Degenerate optics: R*eps280_LP == eps_lmax_LP");
+  const dar = (epsLmaxMab - r * eps280Mab) / denom;
+  const numer = epsLmaxMab - r * eps280Mab;
+  const dDarDr = (-eps280Mab * denom - numer * eps280Lp) / (denom * denom);
+  let relVar = 0.0;
+  if (sigmaA280) relVar += (sigmaA280 / a280) ** 2;
+  if (sigmaALmax) relVar += (sigmaALmax / aLmax) ** 2;
+  const sigmaR = Math.abs(r) * Math.sqrt(relVar);
+  const sigmaDar = Math.abs(dDarDr) * sigmaR;
+  return {
+    dar, sigmaDar,
+    ci95Low: dar - 1.96 * sigmaDar,
+    ci95High: dar + 1.96 * sigmaDar,
+    sigmaR,
+    relSigma: dar !== 0 ? sigmaDar / dar : null,
+  };
+}
+
+// Population mean/variance/SD of a weighted drug-load distribution (k -> weight).
+// The SD is the heterogeneity (spread of drug load), not a measurement error.
+export function distributionDispersion(weights) {
+  const ks = Object.keys(weights);
+  let total = 0;
+  for (const k of ks) total += weights[k];
+  if (total === 0) throw new Error("Total weight must be non-zero");
+  let mean = 0;
+  for (const k of ks) mean += Number(k) * weights[k];
+  mean /= total;
+  let variance = 0;
+  for (const k of ks) variance += weights[k] * (Number(k) - mean) ** 2;
+  variance /= total;
+  return { mean, variance, sd: Math.sqrt(variance) };
+}
+
+// Reduced LC-MS DAR SD from per-chain load heterogeneity. DAR = 2mean(LC)+2mean(HC);
+// treating the 2 light + 2 heavy chains as independent, var = 2var(LC)+2var(HC).
+export function darLcmsReducedUncertainty(lightChain, heavyChain) {
+  const lc = distributionDispersion(lightChain);
+  const hc = distributionDispersion(heavyChain);
+  const dar = 2 * lc.mean + 2 * hc.mean;
+  const variance = 2 * lc.variance + 2 * hc.variance;
+  const sigmaDar = Math.sqrt(variance);
+  return {
+    dar, sigmaDar,
+    lightSd: lc.sd, heavySd: hc.sd,
+    ci95Low: dar - 1.96 * sigmaDar,
+    ci95High: dar + 1.96 * sigmaDar,
   };
 }
 
@@ -381,6 +648,59 @@ export function selfCheck() {
   ok(ec.eps, 50000.0, "eps L=1");
   ok(extinctionCoefficient(CONC, AB280, 0.5).eps, 100000.0, "eps L=0.5");
   results.push("PASS extinction coefficient (regression)");
+  // uncertainty / error propagation
+  const uu = darUVUncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP, 0.01, 0.01);
+  ok(uu.dar, 2.4140809554780795, "DAR unc point");
+  ok(uu.sigmaDar, 0.03370113601940267, "DAR unc sigma");
+  const dd = distributionDispersion({ 0: 5, 1: 15, 2: 45, 3: 25, 4: 10 });
+  ok(dd.sd, 0.9797958971132712, "HIC dispersion sd");
+  const lu = darLcmsReducedUncertainty({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 });
+  ok(lu.sigmaDar, 0.8944271909999159, "LC-MS reduced sigma");
+  results.push("PASS uncertainty (UV / HIC / LC-MS)");
+  // in vitro dosing / serial dilution (spec §8b golden fixture)
+  const dp = planSerialDilution({ stockUM: 1000, topUM: 10, fold: 4, nPoints: 4,
+    replicates: 3, wellVolumeUL: 100.0, doseMode: "spike", doseFactor: 10.0, overage: 1.0 });
+  ok(dp.finalConcsUM[3], 0.15625, "dosing final conc[3]");
+  ok(dp.workingConcsUM[0], 100.0, "dosing working conc[0]");
+  ok(dp.vAddPerWellUL, 100.0 / 9.0, "dosing spike volume");
+  ok(dp.vUsePerTubeUL, 100.0 / 3.0, "dosing dispense per tube");
+  ok(dp.vTransferUL, 100.0 / 9.0, "dosing transfer volume");
+  ok(dp.totalStockUL, 4.444444444444444, "dosing tube-1 stock");
+  ok(dp.tubes[1].diluentUL, 100.0 / 3.0, "dosing tube-2 diluent");
+  ok(dp.totalWells, 12, "dosing total wells");
+  ok(plateWellVolume("96"), 100.0, "plate 96 well volume");
+  const dpr = planSerialDilution({ stockUM: 500, topUM: 50, fold: 2, nPoints: 6,
+    replicates: 4, wellVolumeUL: 200.0, doseMode: "replace", overage: 1.0 });
+  ok(dpr.workingConcsUM[0], 50.0, "replace working==final");
+  ok(dpr.vAddPerWellUL, 200.0, "replace add == well volume");
+  results.push("PASS in vitro dosing (serial dilution)");
+  const pm = plateMap([10, 3.333, 1.111, 0.37], 3, "96", "by_column");
+  if (pm.orientation !== "by_column") throw new Error("plate map orientation");
+  if (pm.used !== 12) throw new Error("plate map used count");
+  if (pm.wells[0].rowLabel + pm.wells[0].colLabel !== "A1") throw new Error("plate map A1");
+  if (pm.wells[1].rowLabel + pm.wells[1].colLabel !== "B1") throw new Error("plate map B1 replicate");
+  if (pm.wells[3].rowLabel + pm.wells[3].colLabel !== "A2") throw new Error("plate map A2 next dose");
+  if (rowLabel(26) !== "AA") throw new Error("row label AA");
+  const pmSeq = plateMap([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], 3, "96", "by_column");
+  if (pmSeq.orientation !== "sequential" || pmSeq.warnings.length === 0) throw new Error("plate map fallback");
+  results.push("PASS plate map (layout + labels)");
+  if (convertConcentration(5, "uM", "nM") !== 5000) throw new Error("unit uM->nM");
+  if (convertConcentration(250, "nM", "uM") !== 0.25) throw new Error("unit nM->uM");
+  const [sp, sr] = seriesShapeFromSelection(3, 4, "by_row");
+  if (sp !== 3 || sr !== 4) throw new Error("series shape by_row");
+  const [sp2, sr2] = seriesShapeFromSelection(3, 4, "by_column");
+  if (sp2 !== 4 || sr2 !== 3) throw new Error("series shape by_column");
+  // dose decreasing down rows (top->bottom), reps across columns
+  const cells = [];
+  for (let r = 2; r < 6; r++) for (let c = 5; c < 8; c++) cells.push([r, c]);
+  const asg = assignSelection(cells, [10, 2.5, 0.625, 0.15625], "by_row");
+  if (!asg.rectangular || asg.rows !== 4 || asg.cols !== 3) throw new Error("selection bbox");
+  const wTop = asg.wells.find((w) => w.row === 2 && w.col === 5);
+  const wBot = asg.wells.find((w) => w.row === 5 && w.col === 5);
+  if (wTop.point !== 0 || wTop.finalConcUM !== 10) throw new Error("selection top dose");
+  if (wBot.point !== 3 || wBot.finalConcUM !== 0.15625) throw new Error("selection bottom dose");
+  if (wTop.replicate !== 1) throw new Error("selection replicate");
+  results.push("PASS units + selection assignment");
   if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
   return results;
