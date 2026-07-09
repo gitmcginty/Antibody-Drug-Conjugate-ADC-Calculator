@@ -81,6 +81,41 @@ def test_ellman():
     assert core.ellman_free_thiols(0.5, 0.6, 203000.0) == approx(11.955241460541815)
 
 
+# ---- Scattering / turbidity correction --------------------------------------
+def test_scatter_absorbance_rayleigh():
+    assert core.scatter_absorbance(0.05, 320.0, 280.0, 4.0) == approx(0.08529779258642231)
+    # shorter target wavelength scatters more strongly than a longer one
+    assert core.scatter_absorbance(0.05, 320.0, 280.0) > core.scatter_absorbance(0.05, 320.0, 495.0)
+
+
+def test_scatter_corrected_absorbance():
+    r = core.scatter_corrected_absorbance(1.0, 0.5, 0.05, 320.0, 495.0, 4.0)
+    assert r["a280_corrected"] == approx(0.9147022074135777)
+    assert r["a_lmax_corrected"] == approx(0.49126728831613614)
+    assert r["scatter_280"] == approx(0.08529779258642231)
+    assert r["scatter_lmax"] == approx(0.008732711683863857)
+
+
+def test_scatter_correction_zero_reference_is_identity():
+    r = core.scatter_corrected_absorbance(1.0, 0.5, 0.0)
+    assert r["a280_corrected"] == approx(1.0)
+    assert r["a_lmax_corrected"] == approx(0.5)
+
+
+def test_scatter_corrected_absorbance_floors_at_zero():
+    # a huge scatter reference drives the correction negative -> floored to 0
+    r = core.scatter_corrected_absorbance(0.1, 0.05, 1.0, 320.0, 495.0, 4.0)
+    assert r["a280_corrected"] == 0.0
+    assert r["a_lmax_corrected"] == 0.0
+
+
+def test_scatter_absorbance_rejects_nonpositive_wavelength():
+    with pytest.raises(ValueError):
+        core.scatter_absorbance(0.05, 0.0, 280.0)
+    with pytest.raises(ValueError):
+        core.scatter_absorbance(0.05, 320.0, -280.0)
+
+
 # ---- HIC --------------------------------------------------------------------
 def test_dar_hic():
     assert core.dar_hic({0: 5, 1: 15, 2: 45, 3: 25, 4: 10}) == approx(2.2)
@@ -90,6 +125,36 @@ def test_dar_species_fractions_sum_to_100():
     frac = core.dar_species_fractions({0: 5, 1: 15, 2: 45, 3: 25, 4: 10})
     assert sum(frac.values()) == approx(100.0)
     assert frac[2] == approx(45.0)
+
+
+def test_dar_hic_corrected_lowers_dar():
+    # Payload absorbs at 280 nm, so uncorrected area% over-weights high-DAR
+    # peaks. Correcting by per-species eps280 must lower the reported DAR.
+    auc = {0: 10.0, 2: 50.0, 4: 30.0, 6: 10.0}
+    uncorr = core.dar_hic(auc)
+    corr = core.dar_hic_corrected(auc, 203000.0, 5000.0)
+    assert uncorr == approx(2.8)
+    assert corr == approx(2.741596270777426)
+    assert corr < uncorr
+
+
+def test_dar_hic_corrected_reduces_to_uncorrected_when_payload_transparent():
+    # eps280_payload == 0 -> every species shares eps280_mab -> identical to
+    # the plain area-weighted mean.
+    auc = {0: 5.0, 1: 15.0, 2: 45.0, 3: 25.0, 4: 10.0}
+    assert core.dar_hic_corrected(auc, 203000.0, 0.0) == approx(core.dar_hic(auc))
+
+
+def test_dar_species_fractions_corrected_sum_to_100():
+    auc = {0: 10.0, 2: 50.0, 4: 30.0, 6: 10.0}
+    frac = core.dar_species_fractions_corrected(auc, 203000.0, 5000.0)
+    assert sum(frac.values()) == approx(100.0)
+    assert frac[2] == approx(50.870418158189466)
+
+
+def test_dar_hic_corrected_rejects_nonpositive_eps():
+    with pytest.raises(ValueError):
+        core.dar_hic_corrected({0: 1.0, 2: 1.0}, 0.0, 0.0)
 
 
 # ---- LC-MS ------------------------------------------------------------------
@@ -506,6 +571,33 @@ def test_dar_uv_uncertainty_zero_sigma_is_degenerate():
     assert u["ci95_high"] == approx(u["dar"])
 
 
+def test_dar_uv_uncertainty_eps_terms_backward_compatible():
+    # eps sigmas default to 0 -> identical to the read-only propagation
+    u = core.dar_uv_uncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP,
+                                sigma_a280=0.01, sigma_a_lmax=0.01)
+    assert u["sigma_dar"] == approx(0.03370113601940267)
+
+
+def test_dar_uv_uncertainty_with_eps_terms():
+    u = core.dar_uv_uncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP,
+                                sigma_a280=0.01, sigma_a_lmax=0.01,
+                                sigma_eps280_mab=2030.0, sigma_eps280_lp=364.35,
+                                sigma_eps_lmax_lp=481.2)
+    assert u["dar"] == approx(2.4140809554780795)
+    assert u["sigma_dar"] == approx(0.13795625467477654)
+    assert u["ci95_low"] == approx(2.4140809554780795 - 1.96 * 0.13795625467477654)
+    assert u["ci95_high"] == approx(2.4140809554780795 + 1.96 * 0.13795625467477654)
+
+
+def test_dar_uv_uncertainty_eps_terms_increase_sigma():
+    base = core.dar_uv_uncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP,
+                                   sigma_a280=0.01, sigma_a_lmax=0.01)
+    more = core.dar_uv_uncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP,
+                                   sigma_a280=0.01, sigma_a_lmax=0.01,
+                                   sigma_eps280_lp=364.35)
+    assert more["sigma_dar"] > base["sigma_dar"]
+
+
 def test_distribution_dispersion_hic():
     d = core.distribution_dispersion({0: 5, 1: 15, 2: 45, 3: 25, 4: 10})
     assert d["mean"] == approx(2.2)
@@ -524,6 +616,43 @@ def test_dar_lcms_reduced_uncertainty():
 def test_distribution_dispersion_rejects_empty():
     with pytest.raises(ValueError):
         core.distribution_dispersion({})
+
+
+# ---- DAR distribution predictor (binomial site-occupancy) -------------------
+def test_predict_dar_distribution_from_feed_ratio():
+    r = core.predict_dar_distribution(4, feed_ratio=2.5, efficiency=0.8)
+    assert r["p_site"] == approx(0.5)
+    assert r["mean_dar"] == approx(2.0)
+    assert r["variance"] == approx(1.0)
+    assert r["sd"] == approx(1.0)
+    assert sum(r["distribution"].values()) == approx(1.0)
+    assert r["distribution"][0] == approx(0.0625)
+    assert r["distribution"][2] == approx(0.375)
+    assert r["distribution"][4] == approx(0.0625)
+
+
+def test_predict_dar_distribution_from_p_site_matches_np():
+    r = core.predict_dar_distribution(8, p_site=0.5)
+    # Binomial mean = n*p, variance = n*p*(1-p)
+    assert r["mean_dar"] == approx(4.0)
+    assert r["variance"] == approx(2.0)
+
+
+def test_predict_dar_distribution_efficiency_scales_p():
+    full = core.predict_dar_distribution(4, feed_ratio=2.0, efficiency=1.0)
+    half = core.predict_dar_distribution(4, feed_ratio=2.0, efficiency=0.5)
+    assert full["p_site"] == approx(0.5)
+    assert half["p_site"] == approx(0.25)
+    assert half["mean_dar"] == approx(1.0)
+
+
+def test_predict_dar_distribution_rejects_bad_input():
+    with pytest.raises(ValueError):
+        core.predict_dar_distribution(0, p_site=0.5)          # n_sites < 1
+    with pytest.raises(ValueError):
+        core.predict_dar_distribution(4)                      # no p or feed
+    with pytest.raises(ValueError):
+        core.predict_dar_distribution(4, feed_ratio=5.0)      # p_site > 1
 
 
 if __name__ == "__main__":
