@@ -104,6 +104,19 @@ free_thiols = (A412 / ε412) / (A280 / ε280_mAb)      with ε412 = 14150 M⁻¹
 `A280` and `A412` are the absorbances of the DTNB-reacted protein aliquot;
 `ε280_mAb` is the molar extinction coefficient of the protein.
 
+### 4b. Reagent-blank / background subtraction
+
+DTNB and its TNB²⁻ product, together with any residual reductant (TCEP/DTT),
+absorb at **both** 412 and 280 nm. A matched reagent blank (all reagents, no
+protein) measures that background; subtracting it before forming the ratio
+removes the bias:
+```
+free_thiols = (A412 − A412_blank) / ε412  ÷  (A280 − A280_blank) / ε280_mAb
+```
+`A412_blank` and `A280_blank` default to 0, so the call reduces exactly to the
+raw ratio when no blank is supplied. The net (blank-subtracted) A280 must be
+positive.
+
 ---
 
 ## 5. DAR by analytical HIC (PDF p.14–15)
@@ -145,6 +158,22 @@ Let `I(DAR=k)` be the deconvoluted peak intensity for species with k drugs.
   DAR = Σ_k k·I(k) / Σ_k I(k)
   ```
 
+### 6b. Ionization-response correction (`dar_lcms_*_corrected`)
+
+The forms above assume MS peak intensity is proportional to molar abundance.
+In electrospray this fails: adding a hydrophobic payload changes a species'
+ionization efficiency, so highly loaded species are typically **under-counted**
+and the naive DAR is biased low. Given a relative response factor `r_k`
+(signal per mole, normalised to any convenient reference, e.g. `r_0 = 1`) for
+each drug-load species, molar abundance is recovered before averaging:
+```
+n_k  ∝  I(k) / r_k
+DAR  = Σ_k k·n_k / Σ_k n_k          (intact)
+DAR  = 2·[Σ k·n_LC / Σ n_LC] + 2·[Σ l·n_HC / Σ n_HC]   (reduced)
+```
+With no response factors supplied (or a missing key → `r_k = 1`) these reduce
+exactly to the uncorrected LC-MS DAR. Response factors must be positive.
+
 ---
 
 ## 7. Conjugation designer (PDF p.3–6)
@@ -177,25 +206,41 @@ implemented as `disulfides_reduced × 2`).
 
 ---
 
-## 7b. Predicted DAR distribution (binomial site-occupancy model)
+## 7b. Predicted DAR distribution (site-occupancy model, chemistry-keyed)
 
-For stochastic cysteine/lysine conjugation, drug load per antibody follows a
-**Binomial** distribution over `n` equivalent, independent sites each occupied
-with probability `p`:
+Drug load per antibody follows a site-occupancy model in which each of `n`
+equivalent, independent **sites** reacts with probability `p` and, when it
+reacts, adds `d = drugs_per_site` drugs. The occupied-site count is
+**Binomial(n, p)**, so with `d` drugs per reacted site:
 ```
-P(DAR=k) = C(n,k) · p^k · (1−p)^(n−k)        k = 0,1,…,n
-mean DAR = n·p
-variance = n·p·(1−p)      SD = sqrt(variance)
+P(DAR = d·j) = C(n,j) · p^j · (1−p)^(n−j)     j = 0,1,…,n
+mean DAR     = d · n · p
+variance     = d² · n · p · (1−p)      SD = sqrt(variance)
 ```
+
+The `drugs_per_site` parameter encodes the conjugation chemistry — this is the
+whole point of the model:
+
+- **Cysteine / TCEP interchain conjugation (`d = 2`, default).** An IgG1 has
+  four interchain disulfides (`n = 4`); reducing each exposes a **pair** of
+  thiols conjugated together, so a reacted site contributes 2 drugs. The DAR
+  ladder is therefore **0, 2, 4, 6, 8** — the even-only support seen for real
+  thiol-linked ADCs (e.g. brentuximab vedotin). Odd DAR species cannot occur.
+- **Stochastic amine / lysine conjugation (`d = 1`).** Each surface lysine
+  reacts independently carrying a single drug, giving the classic smooth
+  binomial over **0, 1, 2, …, n**.
+
 The per-site probability may be given directly, or derived from the molar feed
-ratio and conjugation efficiency:
+ratio and conjugation efficiency, spread over the total drug-carrying capacity
+`n·d`:
 ```
-p = feed_ratio · efficiency / n
+p = feed_ratio · efficiency / (n · d)     ⟹   mean DAR = feed_ratio · efficiency
 ```
-Implemented as `predict_dar_distribution(n_sites, p_site=…|feed_ratio=…, efficiency=…)`;
+Implemented as `predict_dar_distribution(n_sites, p_site=…|feed_ratio=…, efficiency=…, drugs_per_site=2)`;
 moments are taken through `distribution_dispersion` so definitions never drift.
-The SD is the intrinsic drug-load **heterogeneity** predicted by the model, not
-a measurement error. Errors if `n_sites<1`, neither `p_site` nor `feed_ratio`
+The distribution is keyed by **DAR** (multiples of `d`). The SD is the intrinsic
+drug-load **heterogeneity** predicted by the model, not a measurement error.
+Errors if `n_sites<1`, `drugs_per_site<1`, neither `p_site` nor `feed_ratio`
 given, or the implied `p` falls outside `[0,1]`.
 
 ---
@@ -408,11 +453,16 @@ From the spreadsheet inputs: `MW_mAb=145000`, `ε280_mAb_mgml=1.4`
 
 Other fixtures:
 - Ellman `(A412=0.5, A280=0.6, ε280=203000)` → **11.95524** thiols
+- Ellman blank-subtracted `(A412=0.5, A280=0.6, ε280=203000, ε412=14150, A412_blank=0.02, A280_blank=0.01)` → **11.671558** (lower than raw); zero blanks reduce to raw
 - Scatter `(A_ref=0.05, λ_ref=320, λ=280, p=4)` → **0.085298**; corrected `(A280=1.0, Aλmax=0.5, A_ref=0.05, 320, 495, 4)` → A280→**0.914702**, Aλmax→**0.491267**
 - HIC `{0:5,1:15,2:45,3:25,4:10}` → **2.2**
 - HIC corrected `{0:10,2:50,4:30,6:10}, ε280_mab=203000, ε280_payload=5000` → **2.741596** (uncorrected 2.8); species% DAR2 → **50.870418**
 - LC-MS reduced `LC{0:10,1:90}, HC{0:5,1:20,2:75}` → **5.2**
-- DAR distribution `n=4, feed_ratio=2.5, efficiency=0.8` → p=**0.5**, mean=**2.0**, SD=**1.0**, P(k=2)=**0.375**
+- LC-MS intact response-corrected `I{0:10,2:30,4:60}, r{0:1.0,2:0.8,4:0.6}` → **3.220339** (raw 3.0; rises as under-ionized high-load species are up-weighted); no response factors → raw
+- LC-MS reduced response-corrected `LC{0:10,1:90}, HC{0:5,1:20,2:75}, r_LC{0:1.0,1:0.9}, r_HC{0:1.0,1:0.9,2:0.8}` → **5.285461**; no response factors → raw
+- DAR distribution (cysteine, `d=2`) `n=4, feed_ratio=2.5, efficiency=0.8` → p_site=**0.25**, mean=**2.0**, variance=**3.0**, support **{0,2,4,6,8}**, P(DAR=2)=**0.421875**, P(DAR=0)=**0.31640625**
+- DAR distribution (cysteine, `d=2`) `n=4, p_site=0.5` → mean=**4.0**, variance=**4.0**, P(DAR=4)=**0.375**, P(DAR=0)=P(DAR=8)=**0.0625**
+- DAR distribution (lysine, `d=1`) `n=8, p_site=0.5` → mean=**4.0**, variance=**2.0**, support **{0..8}**, P(DAR=3)=**0.21875**
 - DAR-UV uncertainty (Case B, σA280=σAλmax=0.01) → σ_DAR=**0.033701**; with ε terms (σε280_mAb=2030, σε280_LP=364.35, σελmax_LP=481.2) → σ_DAR=**0.137956** (ε-coefficient uncertainty dominates)
 
 Tolerance for all: relative 1e-6.
