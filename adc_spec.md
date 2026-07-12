@@ -464,6 +464,7 @@ Other fixtures:
 - DAR distribution (cysteine, `d=2`) `n=4, p_site=0.5` → mean=**4.0**, variance=**4.0**, P(DAR=4)=**0.375**, P(DAR=0)=P(DAR=8)=**0.0625**
 - DAR distribution (lysine, `d=1`) `n=8, p_site=0.5` → mean=**4.0**, variance=**2.0**, support **{0..8}**, P(DAR=3)=**0.21875**
 - DAR-UV uncertainty (Case B, σA280=σAλmax=0.01) → σ_DAR=**0.033701**; with ε terms (σε280_mAb=2030, σε280_LP=364.35, σελmax_LP=481.2) → σ_DAR=**0.137956** (ε-coefficient uncertainty dominates)
+- Physical bounds `check_physical_bounds`: clean `(dar=2.5, r=0.1, ε280=203000, ελmax=210000, conc=5)` → **[]** (no warnings); `dar=-1.2` → **[dar_negative]**; `dar=20` → **[dar_high]** (but `dar=16` → []); `r=-0.5` → **[r_negative]**; `r=60` → **[r_high]** (but `r=50` → []); `ε280=203000, ελmax=5000` → **[eps_inconsistent]** (but ε280==ελmax → []); `conc=-3` → **[conc_negative]**; collect-all: `(dar=-1, r=-0.5, ε280=1000, ελmax=100, conc={c1:-2,c2:5})` → **4 warnings** `{conc_negative, dar_negative, eps_inconsistent, r_negative}`
 
 Tolerance for all: relative 1e-6.
 
@@ -475,3 +476,29 @@ Tolerance for all: relative 1e-6.
 (`dye_library.json`), each with `name, mw, e_lmax (M⁻¹cm⁻¹), cf280`
 (correction factor: fraction of λmax ε contributed at 280 nm),
 `e280 = e_lmax·cf280`, `lmax (nm)`, and `comment`.
+
+## 10b. Physical-bounds guards (`check_physical_bounds`)
+
+A pure plausibility check that flags computed quantities which are physically
+impossible or almost certainly the result of a swapped/mis-entered input. It
+**never raises** and never alters a calculation — it returns a list of
+`{code, message}` warnings so the UI can surface them inline while still
+showing the (suspect) number. Callers pass only the quantities they have;
+`None`/absent inputs are skipped.
+
+Checks and their `code`s:
+
+| Condition | `code` | Rationale |
+|---|---|---|
+| DAR < 0 | `dar_negative` | A below-blank absorbance drives DAR negative; usually swapped Aλmax/A280 or ε. |
+| DAR > `DAR_MAX_PLAUSIBLE` (16) | `dar_high` | Standard/site-specific ADCs are 2–8; > 16 signals bad ε or absorbances. |
+| R = Aλmax/A280 < 0 | `r_negative` | A measured absorbance is below its blank. |
+| R > `R_MAX_PLAUSIBLE` (50) | `r_high` | A280 and Aλmax likely swapped. |
+| ε280 > ελmax (with ελmax > 0) | `eps_inconsistent` | λmax is the absorbance maximum, so ε280 ≤ ελmax; violation ⇒ swapped/mislabeled coefficients. |
+| any concentration < 0 | `conc_negative` | Concentrations cannot be below zero. |
+
+Boundaries are inclusive-below: exactly `DAR_MAX_PLAUSIBLE`, exactly
+`R_MAX_PLAUSIBLE`, and ε280 == ελmax all pass without warning. Multiple
+conditions are collected in one call (collect-all, not fail-fast).
+
+Constants: `DAR_MAX_PLAUSIBLE = 16.0`, `R_MAX_PLAUSIBLE = 50.0`.
