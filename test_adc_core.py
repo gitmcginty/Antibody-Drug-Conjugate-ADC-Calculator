@@ -729,5 +729,62 @@ def test_predict_dar_distribution_rejects_bad_input():
         core.predict_dar_distribution(4, p_site=0.5, drugs_per_site=0)  # bad d
 
 
+# ---------------------------------------------------------------------------
+# Physical-bounds guards (spec §10b)
+# ---------------------------------------------------------------------------
+def test_check_physical_bounds_clean_case_no_warnings():
+    assert core.check_physical_bounds(
+        dar=2.5, r=0.1, eps280=203000, eps_lmax=210000,
+        concentrations={"conc": 5.0},
+    ) == []
+
+
+def test_check_physical_bounds_returns_empty_when_nothing_passed():
+    assert core.check_physical_bounds() == []
+
+
+def test_check_physical_bounds_negative_dar():
+    w = core.check_physical_bounds(dar=-1.2)
+    assert [x["code"] for x in w] == ["dar_negative"]
+
+
+def test_check_physical_bounds_high_dar():
+    w = core.check_physical_bounds(dar=20.0)
+    assert [x["code"] for x in w] == ["dar_high"]
+    # boundary is inclusive-below: exactly DAR_MAX_PLAUSIBLE is allowed
+    assert core.check_physical_bounds(dar=core.DAR_MAX_PLAUSIBLE) == []
+
+
+def test_check_physical_bounds_negative_r():
+    assert [x["code"] for x in core.check_physical_bounds(r=-0.5)] == ["r_negative"]
+
+
+def test_check_physical_bounds_high_r():
+    assert [x["code"] for x in core.check_physical_bounds(r=60.0)] == ["r_high"]
+    assert core.check_physical_bounds(r=core.R_MAX_PLAUSIBLE) == []
+
+
+def test_check_physical_bounds_eps_inconsistent():
+    w = core.check_physical_bounds(eps280=203000, eps_lmax=5000)
+    assert [x["code"] for x in w] == ["eps_inconsistent"]
+    # equal is allowed (not strictly greater)
+    assert core.check_physical_bounds(eps280=5000, eps_lmax=5000) == []
+
+
+def test_check_physical_bounds_negative_concentration():
+    w = core.check_physical_bounds(concentrations={"mAb conc (mg/mL)": -3.0})
+    assert [x["code"] for x in w] == ["conc_negative"]
+    assert "mAb conc (mg/mL)" in w[0]["message"]
+
+
+def test_check_physical_bounds_collects_multiple():
+    w = core.check_physical_bounds(
+        dar=-1.0, r=-0.5, eps280=1000, eps_lmax=100,
+        concentrations={"c1": -2.0, "c2": 5.0},
+    )
+    codes = sorted(x["code"] for x in w)
+    assert codes == ["conc_negative", "dar_negative", "eps_inconsistent", "r_negative"]
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
