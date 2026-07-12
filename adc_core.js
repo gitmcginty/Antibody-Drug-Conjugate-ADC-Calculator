@@ -652,6 +652,54 @@ export function getDye(name) {
   return DYE_LIBRARY.find((d) => d.name.toLowerCase() === key) || null;
 }
 
+// ==========================================================================
+// 10b. Physical-bounds guards  (spec §10b) — mirrors adc_core.py
+// ==========================================================================
+export const DAR_MAX_PLAUSIBLE = 16.0;
+export const R_MAX_PLAUSIBLE = 50.0;
+
+function _g3(x) {
+  // mirror of Python's %.3g / %.4g for whole numbers and small decimals
+  return Number.isFinite(x) ? String(Number(x.toPrecision(x === Math.trunc(x) ? Math.max(1, String(Math.trunc(Math.abs(x))).length) : 3))) : String(x);
+}
+
+/**
+ * Return physical-plausibility warnings for computed ADC quantities.
+ * Each warning is {code, message}. Pure and side-effect free; pass only the
+ * quantities you have (undefined/null are skipped). Never throws — its job is
+ * to flag nonsense the upstream math emits silently, not to halt calculation.
+ */
+export function checkPhysicalBounds({ dar = null, r = null, eps280 = null, epsLmax = null, concentrations = null } = {}) {
+  const w = [];
+  if (dar !== null && dar !== undefined) {
+    if (dar < 0) {
+      w.push({ code: "dar_negative", message: `DAR is negative (${_g3(dar)}); check that Aλmax/A280 and the ε values are not swapped.` });
+    } else if (dar > DAR_MAX_PLAUSIBLE) {
+      w.push({ code: "dar_high", message: `DAR of ${_g3(dar)} is implausibly high (> ${DAR_MAX_PLAUSIBLE}); typical ADCs are 2–8. Check ε values and absorbances.` });
+    }
+  }
+  if (r !== null && r !== undefined) {
+    if (r < 0) {
+      w.push({ code: "r_negative", message: `Absorbance ratio R = Aλmax/A280 is negative (${_g3(r)}); a measured absorbance is below its blank.` });
+    } else if (r > R_MAX_PLAUSIBLE) {
+      w.push({ code: "r_high", message: `Absorbance ratio R = ${_g3(r)} is very high (> ${R_MAX_PLAUSIBLE}); A280 and Aλmax may be swapped.` });
+    }
+  }
+  if (eps280 !== null && eps280 !== undefined && epsLmax !== null && epsLmax !== undefined) {
+    if (epsLmax > 0 && eps280 > epsLmax) {
+      w.push({ code: "eps_inconsistent", message: `ε280 (${_g3(eps280)}) exceeds ελmax (${_g3(epsLmax)}); λmax should be the absorbance maximum, so this suggests swapped or mislabeled coefficients.` });
+    }
+  }
+  if (concentrations) {
+    for (const [label, c] of Object.entries(concentrations)) {
+      if (c !== null && c !== undefined && c < 0) {
+        w.push({ code: "conc_negative", message: `${label} is negative (${_g3(c)}); concentrations cannot be below zero.` });
+      }
+    }
+  }
+  return w;
+}
+
 // ============================================================================
 // ADC registry: log each preparation / assay and aggregate across batches.
 // Pure functions mirroring adc_core.py (make_registry_record / registry_to_csv
@@ -726,15 +774,16 @@ export function summarizeRegistry(records) {
 // ── Self-check: same golden values as the Python test suite ────────────────
 export function selfCheck() {
   const REL = 1e-6;
+  const results = [];
   const ok = (got, want, label) => {
     const rel = want === 0 ? Math.abs(got) : Math.abs(got - want) / Math.abs(want);
-    if (rel > REL) throw new Error(`FAIL ${label}: got ${got}, want ${want}`);
-    return `PASS ${label}`;
+    return rel > REL ? `FAIL ${label}: got ${got}, want ${want}` : `PASS ${label}`;
   };
+  const chk = (got, want, label) => { const s = ok(got, want, label); if (s[0] === "F") results.push(s); };
+  const must = (failCond, label) => { if (failCond) results.push("FAIL " + label); };
   const MW_MAB = 145000.0, EPS280_MAB = 203000.0, A280 = 7.4315, A_LMAX = 0.7827;
   const MW_LP = 1559.62, EPS280_LP = 7287.0, EPS_LMAX_LP = 9624.0;
   const R = A_LMAX / A280;
-  const results = [];
   results.push(ok(epsMassToMolar(1.4, MW_MAB), 203000.0, "eps conv"));
   results.push(ok(darUV(A280, A_LMAX, EPS280_MAB, R * EPS280_MAB, EPS280_LP, EPS_LMAX_LP), 0.0, "DAR case A"));
   const darB = darUV(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP);
@@ -774,30 +823,30 @@ export function selfCheck() {
     makeRegistryRecord({ id: "ADC-002", assay: "lcms", dar: 5.2 }),
   ];
   const rs = summarizeRegistry(rr);
-  ok(rs.n_total, 3, "registry n"); ok(rs.n_ids, 2, "registry ids");
-  ok(rs.dar_mean, 3.271333333333333, "registry DAR mean");
-  ok(rs.dar_sd, 1.6736981010126448, "registry DAR sd");
+  chk(rs.n_total, 3, "registry n"); chk(rs.n_ids, 2, "registry ids");
+  chk(rs.dar_mean, 3.271333333333333, "registry DAR mean");
+  chk(rs.dar_sd, 1.6736981010126448, "registry DAR sd");
   results.push("PASS registry (3 records)");
   // extinction-coefficient regression
   const CONC = [1e-6, 2e-6, 3e-6, 4e-6, 5e-6];
   const AB280 = CONC.map((c) => 0.01 + 50000.0 * c);
   const fit = linearRegression(CONC, AB280);
-  ok(fit.slope, 50000.0, "linreg slope");
-  ok(fit.intercept, 0.01, "linreg intercept");
-  ok(fit.rSquared, 1.0, "linreg r2");
+  chk(fit.slope, 50000.0, "linreg slope");
+  chk(fit.intercept, 0.01, "linreg intercept");
+  chk(fit.rSquared, 1.0, "linreg r2");
   const ec = extinctionCoefficient(CONC, AB280, 1.0);
-  ok(ec.eps, 50000.0, "eps L=1");
-  ok(extinctionCoefficient(CONC, AB280, 0.5).eps, 100000.0, "eps L=0.5");
+  chk(ec.eps, 50000.0, "eps L=1");
+  chk(extinctionCoefficient(CONC, AB280, 0.5).eps, 100000.0, "eps L=0.5");
   results.push("PASS extinction coefficient (regression)");
   // uncertainty / error propagation
   const uu = darUVUncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP, 0.01, 0.01);
-  ok(uu.dar, 2.4140809554780795, "DAR unc point");
-  ok(uu.sigmaDar, 0.03370113601940267, "DAR unc sigma");
+  chk(uu.dar, 2.4140809554780795, "DAR unc point");
+  chk(uu.sigmaDar, 0.03370113601940267, "DAR unc sigma");
   const uue = darUVUncertainty(A280, A_LMAX, EPS280_MAB, 0.0, EPS280_LP, EPS_LMAX_LP,
                                0.01, 0.01, 2030.0, 0.0, 364.35, 481.2);
-  ok(uue.sigmaDar, 0.13795625467477654, "DAR unc sigma (with eps terms)");
+  chk(uue.sigmaDar, 0.13795625467477654, "DAR unc sigma (with eps terms)");
   const dd = distributionDispersion({ 0: 5, 1: 15, 2: 45, 3: 25, 4: 10 });
-  ok(dd.sd, 0.9797958971132712, "HIC dispersion sd");
+  chk(dd.sd, 0.9797958971132712, "HIC dispersion sd");
   const pd = predictDarDistribution(4, { feedRatio: 2.5, efficiency: 0.8 });
   results.push(ok(pd.pSite, 0.25, "DAR dist p_site (cys)"));
   results.push(ok(pd.meanDar, 2.0, "DAR dist mean (cys)"));
@@ -810,53 +859,62 @@ export function selfCheck() {
   results.push(ok(pdLys.meanDar, 4.0, "DAR dist lysine mean"));
   results.push(ok(pdLys.distribution[3], 0.21875, "DAR dist lysine P(DAR=3)"));
   const lu = darLcmsReducedUncertainty({ 0: 10, 1: 90 }, { 0: 5, 1: 20, 2: 75 });
-  ok(lu.sigmaDar, 0.8944271909999159, "LC-MS reduced sigma");
+  chk(lu.sigmaDar, 0.8944271909999159, "LC-MS reduced sigma");
   results.push("PASS uncertainty (UV / HIC / LC-MS)");
   // in vitro dosing / serial dilution (spec §8b golden fixture)
   const dp = planSerialDilution({ stockUM: 1000, topUM: 10, fold: 4, nPoints: 4,
     replicates: 3, wellVolumeUL: 100.0, doseMode: "spike", doseFactor: 10.0, overage: 1.0 });
-  ok(dp.finalConcsUM[3], 0.15625, "dosing final conc[3]");
-  ok(dp.workingConcsUM[0], 100.0, "dosing working conc[0]");
-  ok(dp.vAddPerWellUL, 100.0 / 9.0, "dosing spike volume");
-  ok(dp.vUsePerTubeUL, 100.0 / 3.0, "dosing dispense per tube");
-  ok(dp.vTransferUL, 100.0 / 9.0, "dosing transfer volume");
-  ok(dp.totalStockUL, 4.444444444444444, "dosing tube-1 stock");
-  ok(dp.tubes[1].diluentUL, 100.0 / 3.0, "dosing tube-2 diluent");
-  ok(dp.totalWells, 12, "dosing total wells");
-  ok(plateWellVolume("96"), 100.0, "plate 96 well volume");
+  chk(dp.finalConcsUM[3], 0.15625, "dosing final conc[3]");
+  chk(dp.workingConcsUM[0], 100.0, "dosing working conc[0]");
+  chk(dp.vAddPerWellUL, 100.0 / 9.0, "dosing spike volume");
+  chk(dp.vUsePerTubeUL, 100.0 / 3.0, "dosing dispense per tube");
+  chk(dp.vTransferUL, 100.0 / 9.0, "dosing transfer volume");
+  chk(dp.totalStockUL, 4.444444444444444, "dosing tube-1 stock");
+  chk(dp.tubes[1].diluentUL, 100.0 / 3.0, "dosing tube-2 diluent");
+  chk(dp.totalWells, 12, "dosing total wells");
+  chk(plateWellVolume("96"), 100.0, "plate 96 well volume");
   const dpr = planSerialDilution({ stockUM: 500, topUM: 50, fold: 2, nPoints: 6,
     replicates: 4, wellVolumeUL: 200.0, doseMode: "replace", overage: 1.0 });
-  ok(dpr.workingConcsUM[0], 50.0, "replace working==final");
-  ok(dpr.vAddPerWellUL, 200.0, "replace add == well volume");
+  chk(dpr.workingConcsUM[0], 50.0, "replace working==final");
+  chk(dpr.vAddPerWellUL, 200.0, "replace add == well volume");
   results.push("PASS in vitro dosing (serial dilution)");
   const pm = plateMap([10, 3.333, 1.111, 0.37], 3, "96", "by_column");
-  if (pm.orientation !== "by_column") throw new Error("plate map orientation");
-  if (pm.used !== 12) throw new Error("plate map used count");
-  if (pm.wells[0].rowLabel + pm.wells[0].colLabel !== "A1") throw new Error("plate map A1");
-  if (pm.wells[1].rowLabel + pm.wells[1].colLabel !== "B1") throw new Error("plate map B1 replicate");
-  if (pm.wells[3].rowLabel + pm.wells[3].colLabel !== "A2") throw new Error("plate map A2 next dose");
-  if (rowLabel(26) !== "AA") throw new Error("row label AA");
+  must(pm.orientation !== "by_column", "plate map orientation");
+  must(pm.used !== 12, "plate map used count");
+  must(pm.wells[0].rowLabel + pm.wells[0].colLabel !== "A1", "plate map A1");
+  must(pm.wells[1].rowLabel + pm.wells[1].colLabel !== "B1", "plate map B1 replicate");
+  must(pm.wells[3].rowLabel + pm.wells[3].colLabel !== "A2", "plate map A2 next dose");
+  must(rowLabel(26) !== "AA", "row label AA");
   const pmSeq = plateMap([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14], 3, "96", "by_column");
-  if (pmSeq.orientation !== "sequential" || pmSeq.warnings.length === 0) throw new Error("plate map fallback");
+  must(pmSeq.orientation !== "sequential" || pmSeq.warnings.length === 0, "plate map fallback");
   results.push("PASS plate map (layout + labels)");
-  if (convertConcentration(5, "uM", "nM") !== 5000) throw new Error("unit uM->nM");
-  if (convertConcentration(250, "nM", "uM") !== 0.25) throw new Error("unit nM->uM");
+  must(convertConcentration(5, "uM", "nM") !== 5000, "unit uM->nM");
+  must(convertConcentration(250, "nM", "uM") !== 0.25, "unit nM->uM");
   const [sp, sr] = seriesShapeFromSelection(3, 4, "by_row");
-  if (sp !== 3 || sr !== 4) throw new Error("series shape by_row");
+  must(sp !== 3 || sr !== 4, "series shape by_row");
   const [sp2, sr2] = seriesShapeFromSelection(3, 4, "by_column");
-  if (sp2 !== 4 || sr2 !== 3) throw new Error("series shape by_column");
+  must(sp2 !== 4 || sr2 !== 3, "series shape by_column");
   // dose decreasing down rows (top->bottom), reps across columns
   const cells = [];
   for (let r = 2; r < 6; r++) for (let c = 5; c < 8; c++) cells.push([r, c]);
   const asg = assignSelection(cells, [10, 2.5, 0.625, 0.15625], "by_row");
-  if (!asg.rectangular || asg.rows !== 4 || asg.cols !== 3) throw new Error("selection bbox");
+  must(!asg.rectangular || asg.rows !== 4 || asg.cols !== 3, "selection bbox");
   const wTop = asg.wells.find((w) => w.row === 2 && w.col === 5);
   const wBot = asg.wells.find((w) => w.row === 5 && w.col === 5);
-  if (wTop.point !== 0 || wTop.finalConcUM !== 10) throw new Error("selection top dose");
-  if (wBot.point !== 3 || wBot.finalConcUM !== 0.15625) throw new Error("selection bottom dose");
-  if (wTop.replicate !== 1) throw new Error("selection replicate");
+  must(wTop.point !== 0 || wTop.finalConcUM !== 10, "selection top dose");
+  must(wBot.point !== 3 || wBot.finalConcUM !== 0.15625, "selection bottom dose");
+  must(wTop.replicate !== 1, "selection replicate");
   results.push("PASS units + selection assignment");
-  if (DYE_LIBRARY.length !== 22) throw new Error("dye library length != 22");
+  // physical-bounds guards (spec §10b)
+  must(checkPhysicalBounds({ dar: 2.5, r: 0.1, eps280: 203000, epsLmax: 210000, concentrations: { c: 5 } }).length !== 0, "bounds: clean case flagged");
+  must(checkPhysicalBounds({ dar: -1.2 })[0].code !== "dar_negative", "bounds: dar_negative");
+  must(checkPhysicalBounds({ dar: 20 })[0].code !== "dar_high", "bounds: dar_high");
+  must(checkPhysicalBounds({ r: -0.5 })[0].code !== "r_negative", "bounds: r_negative");
+  must(checkPhysicalBounds({ r: 60 })[0].code !== "r_high", "bounds: r_high");
+  must(checkPhysicalBounds({ eps280: 203000, epsLmax: 5000 })[0].code !== "eps_inconsistent", "bounds: eps_inconsistent");
+  must(checkPhysicalBounds({ concentrations: { "mAb conc": -3 } })[0].code !== "conc_negative", "bounds: conc_negative");
+  results.push("PASS physical-bounds guards");
+  must(DYE_LIBRARY.length !== 22, "dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
   return results;
 }
@@ -864,6 +922,9 @@ export function selfCheck() {
 // Run self-check when executed directly under Node (node adc_core.js)
 if (typeof process !== "undefined" && process.argv && process.argv[1] &&
     process.argv[1].endsWith("adc_core.js")) {
-  for (const line of selfCheck()) console.log(line);
+  const _r = selfCheck();
+  for (const line of _r) console.log(line);
+  const _f = _r.filter((l) => l.startsWith("FAIL"));
+  if (_f.length) { console.error(`\n${_f.length} SELF-CHECK FAILURE(S):\n` + _f.join("\n")); process.exit(1); }
   console.log("All self-checks passed.");
 }
