@@ -563,6 +563,24 @@ export function distributionDispersion(weights) {
   return { mean, variance, sd: Math.sqrt(variance) };
 }
 
+// Normalise a MEASURED drug-load distribution and report its moments. Unlike
+// predictDarDistribution (a binomial model), this takes the abundances actually
+// measured per DAR species (HIC/LC-MS % or area keyed by integer drug load) and
+// makes no distributional assumption: meanDar is the abundance-weighted average
+// of the observed species, so a skewed native-cysteine profile is reported as
+// measured. Non-negative abundances, positive total.
+export function measuredDarDistribution(species) {
+  const ks = Object.keys(species);
+  for (const k of ks) if (species[k] < 0) throw new Error("Species abundances must be non-negative");
+  let total = 0;
+  for (const k of ks) total += species[k];
+  if (total <= 0) throw new Error("Total abundance must be > 0");
+  const fractions = {};
+  for (const k of ks) fractions[k] = species[k] / total;
+  const disp = distributionDispersion(species);
+  return { fractions, meanDar: disp.mean, variance: disp.variance, sd: disp.sd, total };
+}
+
 // Exact binomial coefficient C(n,k) via a multiplicative loop (no factorial
 // overflow for the small site counts used in ADC conjugation).
 function _binomCoeff(n, k) {
@@ -621,6 +639,39 @@ export function darLcmsReducedUncertainty(lightChain, heavyChain) {
   };
 }
 
+// ── 9c. Product-quality aggregates: SEC purity & free-drug (spec §9c) ───────
+// SEC separates by size into monomer (product), HMW (aggregates, earlier) and
+// LMW (fragments, later). Percentages are area-normalised — the standard SEC
+// reporting convention. Areas non-negative, total positive.
+export function secPurity(aucMonomer, aucHmw, aucLmw = 0.0) {
+  for (const [label, v] of [["monomer", aucMonomer], ["HMW", aucHmw], ["LMW", aucLmw]]) {
+    if (v < 0) throw new Error(`SEC ${label} peak area must be non-negative`);
+  }
+  const total = aucMonomer + aucHmw + aucLmw;
+  if (total <= 0) throw new Error("Total SEC peak area must be > 0");
+  return {
+    pctMonomer: (aucMonomer / total) * 100.0,
+    pctHmw: (aucHmw / total) * 100.0,
+    pctLmw: (aucLmw / total) * 100.0,
+    total,
+  };
+}
+
+// Free (unconjugated) drug is a safety CQA. Inputs in matching units (molar,
+// area or mass); %free = free / (free + conjugated) * 100. Non-negative inputs,
+// positive total.
+export function freeDrugPercent(freeDrug, conjugatedDrug) {
+  if (freeDrug < 0) throw new Error("Free-drug amount must be non-negative");
+  if (conjugatedDrug < 0) throw new Error("Conjugated-drug amount must be non-negative");
+  const total = freeDrug + conjugatedDrug;
+  if (total <= 0) throw new Error("Total drug amount must be > 0");
+  return {
+    pctFree: (freeDrug / total) * 100.0,
+    pctConjugated: (conjugatedDrug / total) * 100.0,
+    total,
+  };
+}
+
 // ── 10. Embedded dye / payload library (spreadsheet cols L-R) ───────────────
 export const DYE_LIBRARY = [
   { name: "AF350", mw: 410, e_lmax: 19000, cf280: 0.19, e280: 3610, lmax: 350, comment: null },
@@ -650,6 +701,49 @@ export const DYE_LIBRARY = [
 export function getDye(name) {
   const key = String(name).trim().toLowerCase();
   return DYE_LIBRARY.find((d) => d.name.toLowerCase() === key) || null;
+}
+
+// ==========================================================================
+// 9c. Payload–linker reference library (spec §9c) — mirrors adc_core.py
+// ==========================================================================
+// ε for common ADC payloads for DAR-by-UV (drug ελmax + its ε280). ε in
+// M⁻¹cm⁻¹; MW in g/mol; λmax in nm. FREE payload and CONJUGATED drug-linker
+// are kept separate (published ε are for one or the other; not interchangeable).
+// null ε -> UI must say "ε not in library; measure or enter manually".
+// sourced:true -> at least one ε pair is a cited value.
+export const PAYLOAD_LIBRARY = [
+  { name: "vc-MMAE", cls: "auristatin", mw_free: 717.98, mw_conj: 1316.63, lambda_max: 248,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: 15900.0, eps280_conj: 1500.0,
+    sourced: true, source: "Cruz & Kayser DAR-by-UV/Vis (drug-linker 15,900@248 / 1,500@280); Cancers 2009 11(6):870." },
+  { name: "DM1", cls: "maytansinoid", mw_free: 738.5, mw_conj: null, lambda_max: 252,
+    eps_lmax_free: 26790.0, eps280_free: 0.0, eps_lmax_conj: null, eps280_conj: null,
+    sourced: true, source: "US Patent 7,666,414 (deJ591-DM1, Ex.17): εDM1@252=26,790; mAb ratio 0.378." },
+  { name: "DM4", cls: "maytansinoid", mw_free: 780.5, mw_conj: null, lambda_max: 252,
+    eps_lmax_free: 28044.0, eps280_free: 5700.0, eps_lmax_conj: null, eps280_conj: null,
+    sourced: true, source: "US Patent 10,780,179 (anti-EGFR-SPDB-DM4): 28,044@252 / 5,700@280." },
+  { name: "mc-MMAF", cls: "auristatin", mw_free: 731.95, mw_conj: 1011.6, lambda_max: 248,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — auristatin λmax≈248; ε not in library (measure or enter manually)." },
+  { name: "deruxtecan (DXd)", cls: "camptothecin", mw_free: 493.5, mw_conj: 1034.0, lambda_max: 370,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — exatecan-derivative camptothecin, DAR by UV at 370 & 280 nm (US 12,491,259); ε not in library." },
+  { name: "SN-38", cls: "camptothecin", mw_free: 392.4, mw_conj: null, lambda_max: 370,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — camptothecin λmax≈370; ε not in library (measure or enter manually)." },
+  { name: "tesirine (SG3199)", cls: "PBD dimer", mw_free: 558.6, mw_conj: 1502.0, lambda_max: 320,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — pyrrolobenzodiazepine dimer λmax≈320; ε not in library." },
+  { name: "calicheamicin γ1", cls: "enediyne", mw_free: 1368.4, mw_conj: null, lambda_max: null,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — enediyne; ε not in library (measure or enter manually)." },
+  { name: "\u03b1-amanitin", cls: "amatoxin", mw_free: 918.97, mw_conj: null, lambda_max: 305,
+    eps_lmax_free: null, eps280_free: null, eps_lmax_conj: null, eps280_conj: null,
+    sourced: false, source: "Reference only — amatoxin λmax≈305; ε not in library (measure or enter manually)." },
+];
+
+export function getPayload(name) {
+  const key = String(name).trim().toLowerCase();
+  return PAYLOAD_LIBRARY.find((p) => p.name.toLowerCase() === key) || null;
 }
 
 // ==========================================================================
@@ -916,6 +1010,35 @@ export function selfCheck() {
   results.push("PASS physical-bounds guards");
   must(DYE_LIBRARY.length !== 22, "dye library length != 22");
   results.push(`PASS dye library (${DYE_LIBRARY.length} entries)`);
+  must(PAYLOAD_LIBRARY.length !== 9, "payload library length != 9");
+  must(PAYLOAD_LIBRARY.filter((p) => p.sourced).length !== 3, "payload sourced count != 3");
+  const _vc = getPayload("vc-MMAE");
+  chk(_vc.eps_lmax_conj, 15900.0, "payload vc-MMAE ελmax_conj");
+  chk(_vc.eps280_conj, 1500.0, "payload vc-MMAE ε280_conj");
+  chk(_vc.lambda_max, 248, "payload vc-MMAE λmax");
+  const _dm1 = getPayload("DM1");
+  chk(_dm1.eps_lmax_free, 26790.0, "payload DM1 ελmax_free");
+  const _dm4 = getPayload("DM4");
+  chk(_dm4.eps280_free, 5700.0, "payload DM4 ε280_free");
+  must(getPayload("mc-MMAF").sourced !== false, "payload mc-MMAF must be reference-only");
+  must(getPayload("nonexistent") !== null, "payload missing lookup must be null");
+  results.push(`PASS payload library (${PAYLOAD_LIBRARY.length} entries)`);
+  const _sec = secPurity(1900.0, 62.0, 38.0);
+  chk(_sec.pctMonomer, 95.0, "SEC %monomer");
+  chk(_sec.pctHmw, 3.1, "SEC %HMW");
+  chk(_sec.pctLmw, 1.9, "SEC %LMW");
+  const _sec2 = secPurity(4900.0, 100.0);
+  chk(_sec2.pctMonomer, 98.0, "SEC %monomer (2-peak)");
+  chk(_sec2.pctLmw, 0.0, "SEC %LMW default 0");
+  must(!(() => { try { secPurity(-1, 1); return false; } catch (e) { return true; } })(), "SEC negative must throw");
+  const _fd = freeDrugPercent(1.5, 598.5);
+  chk(_fd.pctFree, 0.25, "free-drug %free");
+  chk(_fd.pctConjugated, 99.75, "free-drug %conjugated");
+  const _mdd = measuredDarDistribution({ 0: 5, 2: 35, 4: 40, 6: 15, 8: 5 });
+  chk(_mdd.meanDar, 3.6, "measured DAR mean");
+  chk(_mdd.sd, 1.854723699099141, "measured DAR sd");
+  chk(_mdd.fractions[2], 0.35, "measured DAR frac(2)");
+  must(!(() => { try { measuredDarDistribution({ 0: -1 }); return false; } catch (e) { return true; } })(), "measured DAR negative must throw");
   return results;
 }
 
