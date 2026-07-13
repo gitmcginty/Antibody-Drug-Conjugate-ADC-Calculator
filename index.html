@@ -4229,14 +4229,15 @@ function runSelfCheckPanel() {
   }
   const total = res.length, passed = total - fails.length;
   if (panel) {
-    panel.hidden = false;
     if (fails.length === 0) {
-      panel.className = "selfcheck ok";
-      panel.innerHTML =
-        '<svg class="sc-ic" aria-hidden="true"><use href="#ic-check"/></svg>'
-        + '<div class="sc-body"><b>Core self-check passed</b> &mdash; all ' + total
-        + ' golden values match the tested calculation core (Python + JS + this page kept in lock-step).</div>';
+      // Passing is the normal case and doesn't need a front-and-center banner —
+      // the compact footer badge below carries the "all golden values match" signal.
+      // Only the failure case (drift) is surfaced prominently here.
+      panel.hidden = true;
+      panel.className = "selfcheck";
+      panel.innerHTML = "";
     } else {
+      panel.hidden = false;
       panel.className = "selfcheck fail";
       const items = fails.map((f) => "<li>" + escHtml(f) + "</li>").join("");
       panel.innerHTML =
