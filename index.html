@@ -10,11 +10,12 @@
      allowed for img/media so exported-file object URLs work. This blocks loading or
      exfiltrating to any external origin and is defense-in-depth against injection. -->
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; frame-ancestors 'self'">
-<meta name="description" content="Antibody–drug conjugate design calculator: DAR determination, conjugation planning, yield/formulation, and an in vitro dosing plate designer — all from one tested calculation core.">
+<meta name="description" content="Free, open-source calculator for bioconjugation scientists. Calculate Drug-to-Antibody Ratio (DAR), molarity, and conjugation yield using UV-Vis data.">
+<meta name="keywords" content="ADC calculator, antibody-drug conjugate, DAR, drug-to-antibody ratio, bioconjugation, monoclonal antibody, payload, linker, extinction coefficient, conjugation yield, molarity, UV-Vis, HIC, LC-MS, Ellman assay">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#16181c" media="(prefers-color-scheme: dark)">
-<title>ADC Calculator</title>
+<title>Antibody-Drug Conjugate (ADC) Calculator | DAR &amp; Molarity</title>
 <script>
   // Apply the saved theme BEFORE first paint to avoid a flash. Default: dark.
   (function () {
@@ -241,6 +242,12 @@ table.dye tr:hover td{background:var(--accent-soft)}
 .dye-del:hover{color:var(--danger)}
 table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
 .dye-search{max-width:300px;margin-bottom:var(--s2)}
+.dye-detail{margin-top:var(--s2);padding:var(--s2);border:1px solid var(--line);border-radius:8px;background:var(--result)}
+.dye-detail-head{margin-bottom:8px;font-size:15px}
+table.dye.dye-detail-tbl{max-width:360px}
+table.dye.dye-detail-tbl tbody tr{cursor:default}
+table.dye.dye-detail-tbl tr:hover td{background:transparent}
+table.dye.dye-detail-tbl td:first-child{color:var(--muted)}
 /* species / concentration rows */
 .speciesrow{display:grid;grid-template-columns:70px 1fr 34px;gap:var(--s1);align-items:center;margin-bottom:8px}
 .speciesrow.corr{grid-template-columns:70px 1fr 1fr 34px}
@@ -252,6 +259,10 @@ table.dye tr.userdye td:first-child{border-left:2px solid var(--accent)}
 .tag{display:inline-block;background:var(--accent-soft);color:var(--accent);border:1px solid transparent;border-radius:20px;padding:2px 11px;
   font-size:11.5px;margin:2px 4px 2px 0;font-family:var(--mono)}
 .footer{color:var(--faint);font-size:11.5px;text-align:center;padding:var(--s3)}
+.footer-legal{color:var(--faint);font-size:11px;line-height:1.55;text-align:center;max-width:760px;margin:0 auto;padding:0 var(--s3) var(--s3)}
+.footer-legal p{margin:6px 0}
+.footer-legal a{color:var(--muted)}
+.footer-legal .disclaimer{font-weight:600;color:var(--muted)}
 #ab_art{display:block;margin:16px auto 0;max-width:100%;max-height:312px;overflow:hidden;
   font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
   font-size:11px;line-height:12px;letter-spacing:0;white-space:pre;
@@ -366,7 +377,7 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 </defs></svg>
 <header><div class="wrap" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
 <div><h1>ADC Calculator</h1>
-<p>Centralized calculations for antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
+<p>Centralized bioconjugation calculations for monoclonal antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
 <div style="flex:none;display:flex;gap:8px;align-items:center">
 <button class="info-link icon-only" id="theme_toggle" onclick="toggleTheme()" aria-label="Switch to light mode" title="Switch to light mode" style="display:inline-flex;align-items:center;justify-content:center"><svg class="ic" id="theme_toggle_icon"><use href="#ic-sun"/></svg></button>
 </div>
@@ -809,9 +820,10 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
   </div>
   <div class="card">
     <h2>Dye / Payload Library</h2>
-    <p class="desc">Reference extinction coefficients for the built-in Alexa Fluor series and pHrodo dyes plus any dyes/payloads you add, as used by the UV/Vis DAR panel. Click a column header to sort; click a row to load it into the UV/Vis calculator. Dyes you add are marked <span class="tag-user">yours</span> and can be deleted; built-ins are read-only.</p>
-    <input class="dye-search" id="dye_q" placeholder="Filter by name..." oninput="renderDyes()">
-    <div style="overflow-x:auto"><table class="dye" id="dye_table"></table></div>
+    <p class="desc">Reference extinction coefficients for the built-in Alexa Fluor&reg; series and pHrodo&trade; dyes plus any dyes/payloads you add, as used by the UV/Vis DAR panel. Select a dye to view its constants, then load it into the UV/Vis calculator. Dyes you add are marked <span class="tag-user">yours</span> and can be deleted; built-ins are read-only.</p>
+    <label class="field"><span>Select a dye / payload</span>
+      <select id="dye_pick"><option value="">&mdash; select a dye &mdash;</option></select></label>
+    <div id="dye_detail" class="dye-detail" hidden></div>
     <p class="sub">&epsilon;280 = &epsilon;&lambda;max &times; correction factor. pHrodo entries: dilute 1:1 with 1&nbsp;M H&#8322;SO&#8324; before reading. Your dyes are stored in this browser only.</p>
   </div>
 
@@ -841,7 +853,7 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 
   <div class="card">
     <h2>Add dye / payload to library</h2>
-    <p class="desc">Save a new dye or payload to your library. It persists in this browser and appears in the table above and the UV/Vis payload selector. Use <strong>Compute &epsilon;</strong> above, then <strong>Fill from calculator</strong> to copy the fitted values in.</p>
+    <p class="desc">Save a new dye or payload to your library. It persists in this browser and appears in the selector above and the UV/Vis payload selector. Use <strong>Compute &epsilon;</strong> above, then <strong>Fill from calculator</strong> to copy the fitted values in.</p>
     <div class="grid cols3">
       <label class="field"><span>Name</span><input id="nd_name" placeholder="e.g. MMAE-linker"></label>
       <label class="field"><span>MW <span class="unit">g/mol</span></span><input id="nd_mw" type="number" min="0" step="any" placeholder="e.g. 1316"></label>
@@ -963,6 +975,12 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
 </main>
 <pre id="ab_art" aria-hidden="true" title="Drifting IgG antibodies — move your cursor through them"></pre>
 <div class="footer">ADC Calculator &middot; one pure calculation core (Python + JS + this page, kept in lock-step by a shared test suite) &middot; <span id="selfcheck_badge"></span></div>
+<div class="footer-legal">
+<p class="disclaimer">For research use only. Not for use in diagnostic or therapeutic procedures.</p>
+<p>This tool is provided for informational and research purposes and comes with no warranty of any kind. All calculations should be independently verified before use in any experimental, manufacturing, or regulatory context. It is not a medical device and does not provide medical, clinical, or dosing advice.</p>
+<p>&copy; 2026 John McGinty. Released under the <a href="https://opensource.org/licenses/MIT" rel="noopener noreferrer" target="_blank">MIT License</a> &mdash; free and open source.</p>
+<p>Alexa Fluor&reg; and pHrodo&trade; are trademarks of Thermo Fisher Scientific. All other product names, trademarks, and registered trademarks are the property of their respective owners and are used here for identification purposes only; their use does not imply any affiliation with or endorsement by the trademark holders.</p>
+</div>
 
 <script>
 /*
@@ -3777,7 +3795,6 @@ function importPlateDesign(e) {
 }
 
 // ================= Dye library =================
-let dyeSort = { key: "lmax", dir: 1 };
 // ── User dye/payload library (browser-persistent, merged with built-ins) ────
 // The built-in ADC.DYE_LIBRARY stays immutable (its 22 entries anchor the core
 // self-check). User dyes live in a separate localStorage layer and are merged
@@ -3805,44 +3822,65 @@ function findDye(name) {
   return allDyes().find((d) => d.name.toLowerCase() === key) || null;
 }
 
+// Library panel: a single dropdown (#dye_pick) lists built-ins then user dyes;
+// selecting one shows a read-only detail block (#dye_detail) with its constants
+// plus a "Load into UV/Vis" button and, for user dyes, a delete button.
 function renderDyes() {
-  const q = ($("dye_q").value || "").toLowerCase();
-  let rows = allDyes().filter((d) => d.name.toLowerCase().includes(q));
-  rows.sort((a, b) => {
-    let va = a[dyeSort.key], vb = b[dyeSort.key];
-    va = va === null || va === undefined ? -Infinity : va;
-    vb = vb === null || vb === undefined ? -Infinity : vb;
-    if (typeof va === "string") return dyeSort.dir * va.localeCompare(vb);
-    return dyeSort.dir * (va - vb);
+  const sel = $("dye_pick");
+  if (!sel) return;
+  const prev = sel.value;
+  while (sel.options.length > 1) sel.remove(1);
+  const list = allDyes();
+  list.forEach((d) => {
+    const o = document.createElement("option");
+    o.value = d.name;
+    o.textContent = `${d.name}${d._user ? " \u2605 (yours)" : ""} (\u03bbmax ${d.lmax ?? "?"})`;
+    sel.appendChild(o);
   });
-  const cols = [["name", "Name", false], ["mw", "MW", true], ["e_lmax", "\u03b5\u03bbmax (M\u207b\u00b9cm\u207b\u00b9)", true],
-    ["cf280", "CF@280", true], ["e280", "\u03b5280 (M\u207b\u00b9cm\u207b\u00b9)", true], ["lmax", "\u03bbmax (nm)", true], ["comment", "Note", false]];
-  let html = "<thead><tr>" + cols.map((c) => `<th class="${c[2] ? "num" : ""}" onclick="sortDyes('${c[0]}')">${c[1]}</th>`).join("") + "<th></th></tr></thead><tbody>";
-  rows.forEach((d) => {
-    const tag = d._user ? ' <span class="tag-user">yours</span>' : "";
-    // Identify the dye by its (escaped) name in a data-attribute rather than
-    // JSON-injecting the object into an inline onclick — event delegation below
-    // looks it up, so no user string ever lands in an executable attribute.
-    const del = d._user ? `<button class="dye-del" title="delete this dye" data-dye-del="${escHtml(d.name)}">&times;</button>` : "";
-    html += `<tr class="${d._user ? "userdye" : ""}" data-dye="${escHtml(d.name)}" title="load into UV/Vis calculator">
-      <td>${escHtml(d.name)}${tag}</td><td class="num">${d.mw}</td><td class="num">${(d.e_lmax ?? 0).toLocaleString()}</td>
-      <td class="num">${d.cf280}</td><td class="num">${(d.e280 ?? 0).toLocaleString()}</td>
-      <td class="num">${d.lmax ?? "&mdash;"}</td><td>${escHtml(d.comment ?? "")}</td><td class="num">${del}</td></tr>`;
-  });
-  const tbl = $("dye_table");
-  tbl.innerHTML = html + "</tbody>";
-  // Delegated click handling (bound once): row → load into UV/Vis; × → delete.
-  if (!tbl._dyeBound) {
-    tbl._dyeBound = true;
-    tbl.addEventListener("click", (ev) => {
+  // Restore the prior selection if it still exists (e.g. after add); otherwise clear.
+  sel.value = list.some((d) => d.name === prev) ? prev : "";
+  if (!sel._dyeBound) {
+    sel._dyeBound = true;
+    sel.addEventListener("change", () => renderDyeDetail(sel.value));
+  }
+  renderDyeDetail(sel.value);
+}
+// Render the read-only constants view for the selected dye. All user-controlled
+// fields (name, comment) are escaped; the Load/Delete actions carry the dye name
+// in a data-attribute and are handled by a delegated listener, so no user string
+// ever lands in an executable attribute.
+function renderDyeDetail(name) {
+  const box = $("dye_detail");
+  if (!box) return;
+  const d = findDye(name);
+  if (!d) { box.hidden = true; box.innerHTML = ""; return; }
+  const tag = d._user ? ' <span class="tag-user">yours</span>' : ' <span class="sub" style="font-weight:600">built-in</span>';
+  const rows = [
+    ["MW", `${d.mw} g/mol`],
+    ["\u03b5\u03bbmax", `${(d.e_lmax ?? 0).toLocaleString()} M\u207b\u00b9cm\u207b\u00b9`],
+    ["CF@280", `${d.cf280}`],
+    ["\u03b5280", `${(d.e280 ?? 0).toLocaleString()} M\u207b\u00b9cm\u207b\u00b9`],
+    ["\u03bbmax", `${d.lmax ?? "\u2014"} nm`],
+  ];
+  if (d.comment) rows.push(["Note", escHtml(d.comment)]);
+  const del = d._user ? `<button class="ghost" data-dye-del="${escHtml(d.name)}">Delete</button>` : "";
+  box.innerHTML =
+    `<div class="dye-detail-head"><b>${escHtml(d.name)}</b>${tag}</div>`
+    + `<table class="dye dye-detail-tbl"><tbody>`
+    + rows.map((r) => `<tr><td>${r[0]}</td><td class="num">${r[1]}</td></tr>`).join("")
+    + `</tbody></table>`
+    + `<div class="btnrow"><button class="act" data-dye-load="${escHtml(d.name)}">Load into UV/Vis</button>${del}</div>`;
+  box.hidden = false;
+  if (!box._dyeBound) {
+    box._dyeBound = true;
+    box.addEventListener("click", (ev) => {
+      const loadBtn = ev.target.closest("[data-dye-load]");
+      if (loadBtn) { const dye = findDye(loadBtn.getAttribute("data-dye-load")); if (dye) loadDyeToUV(dye); return; }
       const delBtn = ev.target.closest("[data-dye-del]");
-      if (delBtn) { ev.stopPropagation(); deleteUserDye(delBtn.getAttribute("data-dye-del")); return; }
-      const row = ev.target.closest("tr[data-dye]");
-      if (row) { const dye = findDye(row.getAttribute("data-dye")); if (dye) loadDyeToUV(dye); }
+      if (delBtn) { deleteUserDye(delBtn.getAttribute("data-dye-del")); }
     });
   }
 }
-function sortDyes(k) { dyeSort.dir = dyeSort.key === k ? -dyeSort.dir : 1; dyeSort.key = k; renderDyes(); }
 function loadDyeToUV(d) {
   $("uv_mwlp").value = d.mw; $("uv_e280lp").value = d.e280; $("uv_elmaxlp").value = d.e_lmax;
   $("uv_dyesel").value = d.name;
