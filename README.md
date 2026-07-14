@@ -1,4 +1,14 @@
-# ADC Calculator
+# Antibody-Drug Conjugate (ADC) Calculator — DAR &amp; Molarity
+
+**Free, open-source calculator for bioconjugation scientists.** Calculate the
+drug-to-antibody ratio (DAR), molarity, and conjugation yield of monoclonal
+antibody–drug conjugates from UV-Vis, HIC, LC-MS, and Ellman-assay data.
+
+> **Live app:** <https://gitmcginty.github.io/Antibody-Drug-Conjugate-ADC-Calculator/>
+>
+> Keywords: antibody-drug conjugate, ADC, DAR, drug-to-antibody ratio,
+> bioconjugation, monoclonal antibody, payload, linker, extinction coefficient,
+> conjugation yield, molarity, UV-Vis, HIC, LC-MS, Ellman assay.
 
 A centralized tool for antibody–drug conjugate (ADC) calculations: drug-to-antibody
 ratio (DAR) determination, conjugation reaction design, and yield / formulation
@@ -152,15 +162,17 @@ stock, medium), and the CSV export emits one row per well across all groups with
 
 ### 7. Dye / Payload Library — `get_dye`, `DYE_LIBRARY`, `extinction_coefficient`
 22 built-in reference entries (Alexa Fluor AF350–AF790 + 3 pHrodo dyes) with MW,
-ελmax, the CF@280 correction factor, ε280 (= ελmax·CF280), and λmax. Selecting a
-row auto-fills the UV/Vis panel.
+ελmax, the CF@280 correction factor, ε280 (= ελmax·CF280), and λmax. Pick an entry
+from the **dropdown** to view its constants in a detail card, then load it straight
+into the UV/Vis panel with one button.
 
 You can add your own dyes and payloads: the **extinction-coefficient calculator**
 fits a Beer–Lambert dilution series (least squares, ε = slope / path length) to
 give ε280 and ελmax with R², and the **Add to library** form saves the result.
 User dyes persist in the browser (`localStorage`, key `adc_user_dyes_v1`), are
-merged into the table and the UV/Vis selector, marked as yours, and are deletable;
-the 22 built-ins stay read-only so the core self-check is unaffected.
+merged into the dropdown and the UV/Vis selector, marked as yours, and are deletable
+from their detail card; the 22 built-ins stay read-only so the core self-check is
+unaffected.
 
 ### 8. ADC Registry — `make_registry_record`, `registry_to_csv`, `summarize_registry`
 A running log so information accumulates as more ADCs are made and tested. Every
@@ -226,3 +238,29 @@ intact.
 | Registry CSV, Python vs JS | byte-identical output on the same records |
 
 Golden values (rel. tolerance 1e-6) are listed in full in `adc_spec.md §9`.
+
+---
+
+## License
+
+Released under the **MIT License** — free and open source. Copyright (c) 2026
+John McGinty. See the [`LICENSE`](LICENSE) file for the full text. You are free to
+use, copy, modify, and distribute this software, including for commercial
+purposes, provided the copyright notice and license text are retained.
+
+## Disclaimer — research use only
+
+This tool is provided **for research and informational purposes only** and comes
+with **no warranty of any kind** (see the LICENSE). It is **not for use in
+diagnostic or therapeutic procedures**, is not a medical device, and does not
+provide medical, clinical, or dosing advice. All calculations should be
+**independently verified** before being relied upon in any experimental,
+manufacturing, or regulatory context.
+
+## Trademarks
+
+**Alexa Fluor®** and **pHrodo™** are trademarks of Thermo Fisher Scientific. All
+other product names, trademarks, and registered trademarks referenced in this
+project are the property of their respective owners and are used for
+identification purposes only. Their use does not imply any affiliation with or
+endorsement by the trademark holders.
