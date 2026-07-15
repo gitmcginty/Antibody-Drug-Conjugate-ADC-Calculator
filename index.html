@@ -69,10 +69,20 @@ input:focus-visible,select:focus-visible{outline:none}
 }
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   background:var(--bg);color:var(--ink);font-size:13.5px;line-height:1.55;-webkit-font-smoothing:antialiased}
-header{background:var(--panel);border-bottom:1px solid var(--line);padding:22px 0}
-header h1{margin:0;font-size:21px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
-header h1::before{content:"";width:10px;height:20px;border-radius:3px;background:var(--accent);display:inline-block}
-header p{margin:5px 0 0;font-size:12.5px;color:var(--muted);max-width:76ch}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:20px 0}
+header h1{margin:0;font-size:21px;font-weight:600;letter-spacing:-.01em;display:flex;align-items:baseline;gap:10px}
+header p{margin:8px 0 0;font-size:12.5px;color:var(--muted);max-width:76ch}
+.h1row{display:flex;align-items:center;gap:14px}
+.tagline{font-size:12px;color:var(--faint);font-weight:500;letter-spacing:0}
+/* Header antibody mark: same IgG silhouette as the footer animation, tilted with a diagonal ASCII fade. Decorative (aria-hidden); h1 text carries the name. */
+.ab-mark{flex:none;width:46px;height:46px;display:inline-flex;align-items:center;justify-content:center;overflow:visible}
+.ab-mark pre{margin:0;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:5px;line-height:5px;letter-spacing:0;color:var(--faint);user-select:none;-webkit-user-select:none;transform:rotate(-18deg);-webkit-mask-image:linear-gradient(135deg,#000 42%,rgba(0,0,0,0) 96%);mask-image:linear-gradient(135deg,#000 42%,rgba(0,0,0,0) 96%)}
+.ab-mark .pl{color:var(--accent)}
+.hdr-status{margin-top:9px}
+.status-chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;color:var(--ok);background:color-mix(in srgb,var(--ok) 12%,transparent);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);border-radius:999px;padding:3px 10px;white-space:nowrap}
+.status-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 22%,transparent)}
+.status-chip.fail{color:var(--danger);background:color-mix(in srgb,var(--danger) 12%,transparent);border-color:color-mix(in srgb,var(--danger) 35%,transparent)}
+.status-chip.fail .dot{background:var(--danger);box-shadow:0 0 0 3px color-mix(in srgb,var(--danger) 22%,transparent)}
 .wrap{max-width:1140px;margin:0 auto;padding:0 var(--s3)}
 /* Full-bleed sticky bar: background + border span the whole viewport (matching the
    header above), while padding-inline expands on wide screens so the buttons stay
@@ -375,9 +385,26 @@ table.dye td.editable-id::after{content:"\270e";font-size:10px;color:var(--faint
   <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.5"/><line x1="12" y1="1.5" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22.5"/><line x1="1.5" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22.5" y2="12"/><line x1="4.2" y1="4.2" x2="6" y2="6"/><line x1="18" y1="18" x2="19.8" y2="19.8"/><line x1="19.8" y1="4.2" x2="18" y2="6"/><line x1="6" y1="18" x2="4.2" y2="19.8"/></symbol>
   <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.5 6.5 0 0 0 9.8 9.8z"/></symbol>
 </defs></svg>
-<header><div class="wrap" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
-<div><h1>ADC Calculator</h1>
-<p>Centralized bioconjugation calculations for monoclonal antibody&ndash;drug conjugate design, DAR determination &amp; formulation &mdash; every result comes from one tested calculation core with a live self-check</p></div>
+<header role="banner"><div class="wrap" style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px">
+<div>
+<div class="h1row">
+<span class="ab-mark" aria-hidden="true"><pre>000000    000000
+0oooo0    0oooo0
+ 0oooo0  0oooo0 
+  0oooo00oooo0  
+  <span class="pl">✦</span>0oooooooo0<span class="pl">✦</span>  
+  <span class="pl">✦</span><span class="pl">✦</span>0oooooo0<span class="pl">✦</span><span class="pl">✦</span>  
+   <span class="pl">✦</span> 0oooo0 <span class="pl">✦</span>   
+     0oooo0     
+     0oooo0     
+     0oooo0     
+     0oooo0     
+      0000      </pre></span>
+<h1>ADC Calculator <span class="tagline">bioconjugation workbench</span></h1>
+</div>
+<p>Design, characterize &amp; formulate monoclonal antibody&ndash;drug conjugates &mdash; every result from one tested calculation core.</p>
+<div class="hdr-status"><span class="status-chip" id="selfcheck_chip"><span class="dot" aria-hidden="true"></span><span id="selfcheck_chip_text">core self-check</span></span></div>
+</div>
 <div style="flex:none;display:flex;gap:8px;align-items:center">
 <button class="info-link" id="definitions_link" onclick="showDefinitions()" aria-pressed="false" title="Definitions &amp; terms" style="display:inline-flex;align-items:center"><svg class="ic"><use href="#ic-info"/></svg>Definitions</button>
 <button class="info-link icon-only" id="theme_toggle" onclick="toggleTheme()" aria-label="Switch to light mode" title="Switch to light mode" style="display:inline-flex;align-items:center;justify-content:center"><svg class="ic" id="theme_toggle_icon"><use href="#ic-sun"/></svg></button>
@@ -4402,6 +4429,17 @@ function runSelfCheckPanel() {
     } else {
       badge.innerHTML = "core self-check: " + passed + "/" + total + " \u2014 " + fails.length + " FAILED";
       badge.style.color = "var(--danger)";
+    }
+  }
+  // Live header chip mirrors the same result (never a hardcoded count).
+  const chip = $("selfcheck_chip"), chipText = $("selfcheck_chip_text");
+  if (chip && chipText) {
+    if (fails.length === 0) {
+      chip.classList.remove("fail");
+      chipText.textContent = "core self-check \u00b7 " + passed + "/" + total + " passing";
+    } else {
+      chip.classList.add("fail");
+      chipText.textContent = "core self-check \u00b7 " + fails.length + " of " + total + " failing";
     }
   }
 }
