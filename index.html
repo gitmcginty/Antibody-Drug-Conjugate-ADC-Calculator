@@ -3353,10 +3353,11 @@ function calcDosing() {
 
   // per-group serial-dilution recipe tables
   let tbl = "";
-  computed.forEach(({ g, plan }) => {
+  computed.forEach(({ g, plan, replicates }) => {
+    const repWord = replicates === 1 ? "replicate" : "replicates";
     const dispenseNote = g.mode === "spike"
-      ? `Add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well (on top of ${fmt(g.wellVolumeUL, 3)} &micro;L medium).`
-      : `Aspirate medium and add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> to each replicate well.`;
+      ? `Each replicate well receives <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> of working solution on top of the ${fmt(g.wellVolumeUL, 3)} &micro;L medium already in the well (&rarr; ${fmt(plan.finalWellVolumeUL, 3)} &micro;L final, ${fmt(plan.doseFactor, 0)}&times; dilution). The <b>Withdraw</b> column is that dose &times; ${replicates} ${repWord} &times; ${fmt(g.overage, 2)}&times; overage &mdash; the volume to pull from each tube. The surplus is pipetting dead-volume slack and is <b>not</b> delivered to the cells.`
+      : `Aspirate the existing medium and add <b>${fmt(plan.vAddPerWellUL, 3)} &micro;L</b> of working solution to each replicate well. The <b>Withdraw</b> column is that volume &times; ${replicates} ${repWord} &times; ${fmt(g.overage, 2)}&times; overage &mdash; the amount to pull from each tube. The surplus is dead-volume slack, <b>not</b> delivered to the cells.`;
     // Explicit tube-1 callout: how much ADC stock to charge into the first tube.
     // Rendered as a highlighted box (not dim .sub text) so it's the first thing
     // the eye lands on — this is the number people ask for at the bench.
@@ -3374,14 +3375,14 @@ function calcDosing() {
       + `<div style="overflow-x:auto"><table class="dye"><thead><tr>`
       + `<th>Tube</th><th class="num">Final (${dsUnitLabel(unit)})</th><th class="num">Working (${dsUnitLabel(unit)})</th>`
       + `<th>Source</th><th class="num">Transfer in (&micro;L)</th><th class="num">Medium (&micro;L)</th>`
-      + `<th class="num">Tube total (&micro;L)</th><th class="num">Dispense (&micro;L)</th></tr></thead><tbody>`;
+      + `<th class="num">Tube total (&micro;L)</th><th class="num">Per well (&micro;L)</th><th class="num">Withdraw (&micro;L)</th></tr></thead><tbody>`;
     plan.tubes.forEach((t) => {
       const fc = ADC.convertConcentration(t.finalConcUM, "uM", unit);
       const wc = ADC.convertConcentration(t.workingConcUM, "uM", unit);
       tbl += `<tr><td>${t.index}</td><td class="num">${fmt(fc, 4)}</td>`
         + `<td class="num">${fmt(wc, 4)}</td><td>${t.source}</td>`
         + `<td class="num">${fmt(t.transferInUL, 3)}</td><td class="num">${fmt(t.diluentUL, 3)}</td>`
-        + `<td class="num">${fmt(t.totalUL, 3)}</td><td class="num">${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
+        + `<td class="num">${fmt(t.totalUL, 3)}</td><td class="num">${fmt(plan.vAddPerWellUL, 3)}</td><td class="num">${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
     });
     tbl += "</tbody></table></div></div>";
   });
@@ -3451,19 +3452,20 @@ function buildBenchSheetHtml() {
       + `<td>${nPoints} × ${replicates}</td><td>${dsGroupDoseRange(g)}</td>`
       + `<td>${g.mode === "spike" ? fmt(g.factor, 0) + "× spike" : "replace"}</td></tr>`;
 
+    const repWordB = replicates === 1 ? "replicate" : "replicates";
     const dispenseNote = g.mode === "spike"
-      ? `Add <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> to each replicate well (on top of ${fmt(g.wellVolumeUL, 3)} µL medium).`
-      : `Aspirate medium and add <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> to each replicate well.`;
+      ? `Each replicate well receives <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> of working solution on top of the ${fmt(g.wellVolumeUL, 3)} µL medium already in the well (→ ${fmt(plan.finalWellVolumeUL, 3)} µL final, ${fmt(plan.doseFactor, 0)}× dilution). The Withdraw column is that dose × ${replicates} ${repWordB} × ${fmt(g.overage, 2)}× overage — the volume to pull from each tube. The surplus is pipetting dead-volume slack and is not delivered to the cells.`
+      : `Aspirate the existing medium and add <b>${fmt(plan.vAddPerWellUL, 3)} µL</b> of working solution to each replicate well. The Withdraw column is that volume × ${replicates} ${repWordB} × ${fmt(g.overage, 2)}× overage — the amount to pull from each tube. The surplus is dead-volume slack, not delivered to the cells.`;
     recipes += `<div class="grp"><h3><span class="sw" style="background:${g.color}"></span>${esc(g.name)}`
       + `<span class="sub"> — ${esc(g.cell) || "cell line n/a"}${g.adc ? " · " + esc(g.adc) : ""}</span></h3>`
       + `<p class="sub">Prepare each tube to ${fmt(plan.vTubeTotalUL, 3)} µL, mix, transfer ${fmt(plan.vTransferUL, 3)} µL to the next tube. ${dispenseNote}</p>`
       + `<table class="info"><thead><tr><th>Tube</th><th>Final (${dsUnitLabel(unit)})</th><th>Working (${dsUnitLabel(unit)})</th>`
-      + `<th>Source</th><th>Transfer in (µL)</th><th>Medium (µL)</th><th>Tube total (µL)</th><th>Dispense (µL)</th></tr></thead><tbody>`;
+      + `<th>Source</th><th>Transfer in (µL)</th><th>Medium (µL)</th><th>Tube total (µL)</th><th>Per well (µL)</th><th>Withdraw (µL)</th></tr></thead><tbody>`;
     plan.tubes.forEach((t) => {
       const fc = ADC.convertConcentration(t.finalConcUM, "uM", unit);
       const wc = ADC.convertConcentration(t.workingConcUM, "uM", unit);
       recipes += `<tr><td>${t.index}</td><td>${fmt(fc, 4)}</td><td>${fmt(wc, 4)}</td><td>${esc(t.source)}</td>`
-        + `<td>${fmt(t.transferInUL, 3)}</td><td>${fmt(t.diluentUL, 3)}</td><td>${fmt(t.totalUL, 3)}</td><td>${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
+        + `<td>${fmt(t.transferInUL, 3)}</td><td>${fmt(t.diluentUL, 3)}</td><td>${fmt(t.totalUL, 3)}</td><td>${fmt(plan.vAddPerWellUL, 3)}</td><td>${fmt(t.dispenseToWellsUL, 3)}</td></tr>`;
     });
     recipes += `</tbody></table></div>`;
   });
